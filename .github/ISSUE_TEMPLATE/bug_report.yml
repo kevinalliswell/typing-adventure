@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible problem in the typing game.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: What happened?
+      description: Tell us what you expected and what you observed.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      description: Include the lesson, activity, browser and keyboard steps.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Chrome 125 on macOS
