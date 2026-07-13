@@ -5,6 +5,7 @@ import {
   completeSession,
   getDailyPlan,
   getActivityForPrompt,
+  getLesson,
   normalizeKey,
   recordKey,
 } from "./engine.js";
@@ -15,6 +16,8 @@ import { loadProfile, saveProfile } from "./storage.js";
 import { formatTime, renderBalloonArena, renderHome, renderKeyboard, renderPractice, renderResult, renderTarget } from "./ui.js";
 import "./styles.css";
 
+const DRAFT_KEY = "typing-adventure:session-draft";
+const DRAFT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const app = document.querySelector("#app");
 let profile = loadProfile();
 let screen = "home";
@@ -27,7 +30,18 @@ const sound = new SoundBoard(profile.audio);
 function render() {
   if (screen === "home") app.innerHTML = renderHome(profile);
   if (screen === "practice" && run) app.innerHTML = renderPractice(profile, run);
-  if (screen === "result" && run?.result) app.innerHTML = renderResult(profile, run.result);
+  if (screen === "result" && run?.result) {
+    app.innerHTML = renderResult(profile, run.result);
+    const actions = app.querySelector(".dialog-actions");
+    if (actions && !actions.querySelector('[data-action="continue"]')) {
+      const continueButton = document.createElement("button");
+      continueButton.className = "primary-action";
+      continueButton.type = "button";
+      continueButton.dataset.action = "continue";
+      continueButton.textContent = "继续下一站";
+      actions.prepend(continueButton);
+    }
+  }
 }
 
 function focusCapture() {
@@ -79,13 +93,14 @@ function setActivity(nextActivity) {
   else if (wasBalloon) stopBalloonMode();
 }
 
-function startPractice() {
-  clearTimer();
-  sound.update(profile.audio);
-  sound.unlock();
-  const plan = getDailyPlan(profile);
-  run = {
+function createRun(plan, { countsTowardProgress = true } = {}) {
+  return {
     plan,
+    originalPlan: {
+      dayNumber: plan.dayNumber,
+      sessionNumber: plan.sessionNumber,
+    },
+    countsTowardProgress,
     lesson: plan.lesson,
     difficultyId: profile.difficultyId,
     prompt: choosePrompt(plan.lesson, profile, 0),
@@ -105,11 +120,21 @@ function startPractice() {
     announcement: `${plan.lesson.title}，第 ${plan.sessionNumber} 次练习开始`,
     paused: false,
   };
+}
+
+function startPractice(planOverride = null, options = {}) {
+  clearTimer();
+  clearDraft();
+  sound.update(profile.audio);
+  sound.unlock();
+  const plan = planOverride ?? getDailyPlan(profile);
+  run = createRun(plan, options);
   screen = "practice";
   render();
   focusCapture();
   sound.station();
   sound.speak(`第 ${plan.dayNumber} 天，${plan.lesson.title}`);
+  saveDraft();
   timerHandle = window.setInterval(tick, 1000);
 }
 
@@ -118,6 +143,7 @@ function tick() {
   run.remainingSeconds = Math.max(0, run.remainingSeconds - 1);
   const timer = document.querySelector("#timer-value");
   if (timer) timer.textContent = formatTime(run.remainingSeconds);
+  saveDraft();
   if (run.remainingSeconds <= 0) finishPractice({ allowEmpty: true });
 }
 
@@ -159,6 +185,7 @@ function updatePracticeView() {
   if (planet) planet.style.left = `${Math.min(94, 4 + (run.completedPrompts / 6) * 90)}%`;
   setText("#screen-announcer", run.announcement);
   run.lastPressed = "";
+  saveDraft();
 }
 
 function setText(selector, text) {
@@ -258,6 +285,7 @@ function pausePractice() {
   run.paused = true;
   stopBalloonMode();
   run.announcement = "练习已暂停";
+  saveDraft();
   render();
   document.querySelector('[data-action="resume"]')?.focus();
 }
@@ -272,19 +300,23 @@ function resumePractice() {
   sound.speak("继续飞行");
   render();
   focusCapture();
+  saveDraft();
 }
 
 function finishPractice({ allowEmpty = false } = {}) {
   if (!run || screen !== "practice" || (!allowEmpty && run.total === 0)) return;
   clearTimer();
   stopBalloonMode();
+  clearDraft();
   const accuracy = run.total === 0 ? 0 : run.correct / run.total;
-  profile = completeSession(profile, {
-    accuracy,
-    elapsedSeconds: SESSION_SECONDS - run.remainingSeconds,
-    completedAt: new Date().toISOString(),
-  });
-  saveProfile(profile);
+  if (run.countsTowardProgress) {
+    profile = completeSession(profile, {
+      accuracy,
+      elapsedSeconds: SESSION_SECONDS - run.remainingSeconds,
+      completedAt: new Date().toISOString(),
+    });
+    saveProfile(profile);
+  }
   sound.complete();
   sound.speak(run.total === 0 ? "本次还没有输入，可以重新开始" : accuracy >= 0.92 ? "漂亮的降落" : "探险完成");
   run.result = {
@@ -293,10 +325,26 @@ function finishPractice({ allowEmpty = false } = {}) {
     correct: run.correct,
     errors: run.errors,
     empty: run.total === 0,
+    originalPlan: run.originalPlan,
   };
   screen = "result";
   render();
-  document.querySelector('[data-action="home"]')?.focus();
+  document.querySelector('[data-action="continue"]')?.focus();
+}
+
+function retryCompletedSession() {
+  if (!run?.result?.originalPlan) return;
+  const { dayNumber, sessionNumber } = run.result.originalPlan;
+  startPractice({
+    dayNumber,
+    sessionNumber,
+    totalSessions: 84,
+    lesson: getLesson(dayNumber),
+  }, { countsTowardProgress: false });
+}
+
+function continueToNextSession() {
+  startPractice();
 }
 
 function clearTimer() {
@@ -304,9 +352,21 @@ function clearTimer() {
   timerHandle = null;
 }
 
-function goHome() {
+function hasMeaningfulProgress() {
+  return Boolean(run && (run.total > 0 || run.remainingSeconds < SESSION_SECONDS - 10));
+}
+
+function goHome({ force = false } = {}) {
+  if (!force && screen === "practice" && hasMeaningfulProgress()) {
+    const shouldLeave = window.confirm("本次探险还没有完成。确定退出并放弃当前进度吗？");
+    if (!shouldLeave) {
+      focusCapture();
+      return;
+    }
+  }
   clearTimer();
   stopBalloonMode();
+  clearDraft();
   screen = "home";
   run = null;
   render();
@@ -336,6 +396,96 @@ function toggleAudioSetting(setting) {
   if (screen === "practice") focusCapture();
 }
 
+function saveDraft() {
+  if (!run || screen !== "practice") return;
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+      version: 1,
+      savedAt: Date.now(),
+      plan: run.originalPlan,
+      countsTowardProgress: run.countsTowardProgress,
+      state: {
+        difficultyId: run.difficultyId,
+        prompt: run.prompt,
+        promptIndex: run.promptIndex,
+        activityIndex: run.completedPrompts,
+        completedPrompts: run.completedPrompts,
+        typed: run.typed,
+        correct: run.correct,
+        errors: run.errors,
+        total: run.total,
+        streak: run.streak,
+        score: run.score,
+        remainingSeconds: run.remainingSeconds,
+        lastFeedback: run.lastFeedback,
+        feedbackText: run.feedbackText,
+        announcement: run.announcement,
+        paused: true,
+      },
+    }));
+  } catch {
+    // 浏览器禁用会话存储时，练习仍可继续。
+  }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // 忽略存储不可用。
+  }
+}
+
+function restoreDraft() {
+  let draft;
+  try {
+    draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null");
+  } catch {
+    clearDraft();
+    return false;
+  }
+  if (!draft || draft.version !== 1 || Date.now() - Number(draft.savedAt) > DRAFT_MAX_AGE_MS) {
+    clearDraft();
+    return false;
+  }
+  const dayNumber = Math.min(42, Math.max(1, Number(draft.plan?.dayNumber) || 1));
+  const sessionNumber = Math.min(2, Math.max(1, Number(draft.plan?.sessionNumber) || 1));
+  if (!window.confirm(`发现第 ${dayNumber} 天第 ${sessionNumber} 次未完成的探险，是否继续？`)) {
+    clearDraft();
+    return false;
+  }
+  const lesson = getLesson(dayNumber);
+  const plan = { dayNumber, sessionNumber, totalSessions: 84, lesson };
+  const baseRun = createRun(plan, { countsTowardProgress: Boolean(draft.countsTowardProgress) });
+  const state = draft.state ?? {};
+  run = {
+    ...baseRun,
+    difficultyId: Object.hasOwn(DIFFICULTIES, state.difficultyId) ? state.difficultyId : baseRun.difficultyId,
+    prompt: typeof state.prompt === "string" && state.prompt ? state.prompt : baseRun.prompt,
+    promptIndex: Math.max(0, Number(state.promptIndex) || 0),
+    activity: getActivityForPrompt(Math.max(0, Number(state.activityIndex) || 0)),
+    completedPrompts: Math.max(0, Number(state.completedPrompts) || 0),
+    typed: typeof state.typed === "string" ? state.typed : "",
+    correct: Math.max(0, Number(state.correct) || 0),
+    errors: Math.max(0, Number(state.errors) || 0),
+    total: Math.max(0, Number(state.total) || 0),
+    streak: Math.max(0, Number(state.streak) || 0),
+    score: Math.max(0, Number(state.score) || 0),
+    remainingSeconds: Math.min(SESSION_SECONDS, Math.max(0, Number(state.remainingSeconds) || SESSION_SECONDS)),
+    lastFeedback: typeof state.lastFeedback === "string" ? state.lastFeedback : "ready",
+    feedbackText: typeof state.feedbackText === "string" ? state.feedbackText : "星语继续前进",
+    announcement: typeof state.announcement === "string" ? state.announcement : "继续未完成的探险",
+    paused: false,
+  };
+  screen = "practice";
+  render();
+  focusCapture();
+  if (isBalloonActivity()) startBalloonMode();
+  timerHandle = window.setInterval(tick, 1000);
+  saveDraft();
+  return true;
+}
+
 app.addEventListener("click", (event) => {
   const action = event.target.closest("[data-action]")?.dataset.action;
   if (!action) return;
@@ -344,7 +494,8 @@ app.addEventListener("click", (event) => {
   if (action === "resume") resumePractice();
   if (action === "finish") finishPractice();
   if (action === "home") goHome();
-  if (action === "retry") startPractice();
+  if (action === "retry") retryCompletedSession();
+  if (action === "continue") continueToNextSession();
   if (action === "difficulty") updateDifficulty(event.target.closest("[data-difficulty]").dataset.difficulty);
   if (action === "toggle-effects") toggleAudioSetting("effectsEnabled");
   if (action === "toggle-voice") toggleAudioSetting("voiceEnabled");
@@ -354,5 +505,13 @@ window.addEventListener("keydown", acceptKey);
 window.addEventListener("visibilitychange", () => {
   if (document.hidden && screen === "practice" && run && !run.paused) pausePractice();
 });
+window.addEventListener("beforeunload", (event) => {
+  if (screen === "practice" && hasMeaningfulProgress()) {
+    saveDraft();
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
 
 render();
+restoreDraft();
