@@ -12,6 +12,7 @@ import {
   getActivityForPrompt,
   getDailyPlan,
   getLesson,
+  getPromptKeys,
   getWeakestKey,
   recordKey,
 } from "../src/engine.js";
@@ -50,6 +51,24 @@ test("course keys unlock in a gentle home-row to full-keyboard progression", () 
   assert.ok(fullAlphabet.activeKeys.includes("z"));
   assert.ok(punctuation.activeKeys.includes("space"));
   assert.equal(getLesson(42).phase, "celebration");
+});
+
+test("every prompt only uses keys unlocked for its lesson", () => {
+  for (const lesson of COURSE) {
+    for (const prompt of lesson.prompts) {
+      const missingKeys = getPromptKeys(prompt).filter((key) => !lesson.activeKeys.includes(key));
+      assert.deepEqual(
+        missingKeys,
+        [],
+        `Day ${lesson.dayNumber} (${lesson.title}) prompt ${JSON.stringify(prompt)} uses locked keys: ${missingKeys.join(", ")}`,
+      );
+    }
+  }
+});
+
+test("uppercase prompts explicitly require shift", () => {
+  assert.deepEqual(getPromptKeys("I Am"), ["shift", "i", "space", "a", "m"]);
+  assert.ok(getLesson(30).activeKeys.includes("shift"));
 });
 
 test("a mistyped key becomes the next adaptive focus", () => {

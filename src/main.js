@@ -116,8 +116,9 @@ function startPractice() {
 function tick() {
   if (!run || run.paused || screen !== "practice") return;
   run.remainingSeconds = Math.max(0, run.remainingSeconds - 1);
-  document.querySelector("#timer-value").textContent = formatTime(run.remainingSeconds);
-  if (run.remainingSeconds <= 0) finishPractice();
+  const timer = document.querySelector("#timer-value");
+  if (timer) timer.textContent = formatTime(run.remainingSeconds);
+  if (run.remainingSeconds <= 0) finishPractice({ allowEmpty: true });
 }
 
 function updatePracticeView() {
@@ -133,9 +134,7 @@ function updatePracticeView() {
   const target = document.querySelector("#target-sequence");
   if (target) target.innerHTML = renderTarget(run.prompt, run.typed, run.lastFeedback);
   const keyboard = document.querySelector("#keyboard-container");
-  if (keyboard) {
-    keyboard.innerHTML = renderKeyboard(run.lesson, profile, balloonActive ? "" : expected, run.lastPressed);
-  }
+  if (keyboard) keyboard.innerHTML = renderKeyboard(run.lesson, profile, balloonActive ? "" : expected, run.lastPressed);
   setText("#accuracy-value", accuracy);
   setText("#streak-value", `${run.streak} 次`);
   setText("#score-value", String(run.score));
@@ -200,9 +199,7 @@ function acceptKey(event) {
       setActivity(getActivityForPrompt(run.completedPrompts));
       run.prompt = choosePrompt(run.lesson, profile, run.promptIndex);
       run.typed = "";
-      run.feedbackText = run.completedPrompts % 4 === 0
-        ? "小站到站，伸伸小手再出发"
-        : "小站通过，下一种玩法在前面";
+      run.feedbackText = run.completedPrompts % 4 === 0 ? "小站到站，伸伸小手再出发" : "小站通过，下一种玩法在前面";
       run.announcement = `${run.activity.title}，${run.activity.hint}`;
       sound.station();
       if (run.completedPrompts % 4 === 0) sound.speak("小站到站，伸伸小手再出发");
@@ -277,11 +274,11 @@ function resumePractice() {
   focusCapture();
 }
 
-function finishPractice() {
-  if (!run || screen !== "practice" || run.total === 0) return;
+function finishPractice({ allowEmpty = false } = {}) {
+  if (!run || screen !== "practice" || (!allowEmpty && run.total === 0)) return;
   clearTimer();
   stopBalloonMode();
-  const accuracy = run.correct / run.total;
+  const accuracy = run.total === 0 ? 0 : run.correct / run.total;
   profile = completeSession(profile, {
     accuracy,
     elapsedSeconds: SESSION_SECONDS - run.remainingSeconds,
@@ -289,12 +286,13 @@ function finishPractice() {
   });
   saveProfile(profile);
   sound.complete();
-  sound.speak(accuracy >= 0.92 ? "漂亮的降落" : "探险完成");
+  sound.speak(run.total === 0 ? "本次还没有输入，可以重新开始" : accuracy >= 0.92 ? "漂亮的降落" : "探险完成");
   run.result = {
     accuracy,
     score: run.score,
     correct: run.correct,
     errors: run.errors,
+    empty: run.total === 0,
   };
   screen = "result";
   render();
@@ -323,10 +321,7 @@ function updateDifficulty(id) {
 }
 
 function toggleAudioSetting(setting) {
-  const audio = {
-    ...profile.audio,
-    [setting]: !profile.audio[setting],
-  };
+  const audio = { ...profile.audio, [setting]: !profile.audio[setting] };
   profile = { ...profile, audio };
   sound.update(audio);
   saveProfile(profile);
