@@ -93,8 +93,18 @@ function unique(values) {
   return [...new Set(values)];
 }
 
-function createLesson(spec, dayNumber, activeKeys) {
-  const [phase, title, story, newKeys, prompts] = spec;
+export function getPromptKeys(prompt) {
+  const keys = [];
+  for (const character of String(prompt)) {
+    if (character === " ") keys.push("space");
+    else if (/[A-Z]/.test(character)) keys.push("shift", character.toLowerCase());
+    else if (character.length === 1) keys.push(character.toLowerCase());
+  }
+  return unique(keys);
+}
+
+function createLesson(spec, dayNumber, activeKeys, newKeys) {
+  const [phase, title, story, , prompts] = spec;
   const week = Math.ceil(dayNumber / 7);
   return Object.freeze({
     dayNumber,
@@ -112,9 +122,12 @@ function createLesson(spec, dayNumber, activeKeys) {
 
 let unlocked = [];
 export const COURSE = Object.freeze(LESSON_SPECS.map((spec, index) => {
-  unlocked = unique([...unlocked, ...spec[3]]);
-  const activeKeys = unique([...unlocked, ...(index >= 28 ? ["space"] : [])]);
-  return createLesson(spec, index + 1, activeKeys);
+  const declaredNewKeys = spec[3];
+  const requiredKeys = unique(spec[4].flatMap(getPromptKeys));
+  const inferredNewKeys = requiredKeys.filter((key) => !unlocked.includes(key));
+  const newKeys = unique([...declaredNewKeys, ...inferredNewKeys]);
+  unlocked = unique([...unlocked, ...newKeys]);
+  return createLesson(spec, index + 1, unlocked, newKeys);
 }));
 
 export function createProfile() {
@@ -123,11 +136,7 @@ export function createProfile() {
     completedSessions: 0,
     totalSeconds: 0,
     difficultyId: "gentle",
-    audio: {
-      effectsEnabled: true,
-      voiceEnabled: false,
-      volume: 0.6,
-    },
+    audio: { effectsEnabled: true, voiceEnabled: false, volume: 0.6 },
     keyStats: {},
     history: [],
   };
@@ -144,12 +153,7 @@ export function getDailyPlan(profile) {
   const cappedCompleted = Math.min(completed, totalSessions);
   const dayNumber = Math.min(COURSE_DAYS, Math.floor(cappedCompleted / SESSIONS_PER_DAY) + 1);
   const sessionNumber = cappedCompleted >= totalSessions ? SESSIONS_PER_DAY : (cappedCompleted % SESSIONS_PER_DAY) + 1;
-  return {
-    dayNumber,
-    sessionNumber,
-    totalSessions,
-    lesson: getLesson(dayNumber),
-  };
+  return { dayNumber, sessionNumber, totalSessions, lesson: getLesson(dayNumber) };
 }
 
 export function normalizeKey(key) {
@@ -164,14 +168,16 @@ export function recordKey(profile, key, isCorrect) {
   const normalized = normalizeKey(key);
   if (!normalized) return profile;
   const oldStats = profile.keyStats[normalized] ?? { hits: 0, errors: 0 };
-  const keyStats = {
-    ...profile.keyStats,
-    [normalized]: {
-      hits: oldStats.hits + (isCorrect ? 1 : 0),
-      errors: oldStats.errors + (isCorrect ? 0 : 1),
+  return {
+    ...profile,
+    keyStats: {
+      ...profile.keyStats,
+      [normalized]: {
+        hits: oldStats.hits + (isCorrect ? 1 : 0),
+        errors: oldStats.errors + (isCorrect ? 0 : 1),
+      },
     },
   };
-  return { ...profile, keyStats };
 }
 
 export function getMastery(profile, key) {
