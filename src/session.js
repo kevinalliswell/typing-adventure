@@ -31,9 +31,10 @@ function gateIsComplete(gate, gateIndex, run, accuracy, difficulty) {
 
 export function getSessionProgress(run, difficulty = {}) {
   const accuracy = getRunAccuracy(run);
-  let completedGates = 0;
+  let completedGates = Math.floor(boundedNumber(run?.completedGates, 0, SESSION_GATES.length));
 
   for (const [index, gate] of SESSION_GATES.entries()) {
+    if (index < completedGates) continue;
     if (!gateIsComplete(gate, index, run, accuracy, difficulty)) break;
     completedGates += 1;
   }

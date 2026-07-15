@@ -56,3 +56,13 @@ test("hints become scarcer by gate and return after repeated errors", () => {
   assert.equal(shouldShowTargetHint(DIFFICULTIES.rocket, 2, 2), false);
   assert.equal(shouldShowTargetHint(DIFFICULTIES.rocket, 2, 3), true);
 });
+
+test("a cleared gate never regresses after later mistakes", () => {
+  const progress = getSessionProgress(
+    runState({ correct: 12, total: 16, completedPrompts: 2, completedGates: 1 }),
+    DIFFICULTIES.gentle,
+  );
+
+  assert.equal(progress.completedGates, 1);
+  assert.equal(progress.gate.id, "mission");
+});

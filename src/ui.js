@@ -1,6 +1,7 @@
 import { DIFFICULTIES, KEY_ROWS, getCourseProgress, getDailyPlan, getMastery, normalizeKey } from "./engine.js";
 import { requiresShift } from "./input.js";
 import { BALLOON_EXPLOSION_SECONDS, BALLOON_FIELD_HEIGHT, PROJECTILE_FLIGHT_SECONDS } from "./balloon-game.js";
+import { SESSION_GATES, getSessionProgress, shouldShowTargetHint } from "./session.js";
 
 export function escapeHtml(value) {
   return String(value)
@@ -46,7 +47,7 @@ function renderDifficulty(profile) {
   return Object.values(DIFFICULTIES).map((difficulty) => `
     <button class="difficulty-choice ${profile.difficultyId === difficulty.id ? "is-selected" : ""}" type="button" data-action="difficulty" data-difficulty="${difficulty.id}" aria-pressed="${profile.difficultyId === difficulty.id}">
       <span class="difficulty-dot difficulty-dot--${difficulty.id}" aria-hidden="true"></span>
-      <span class="difficulty-copy"><strong>${difficulty.name}</strong><small>${difficulty.description}</small></span>
+      <span class="difficulty-copy"><strong>${difficulty.name} · ${Math.round(difficulty.targetAccuracy * 100)}%</strong><small>${difficulty.description}</small></span>
       <span class="difficulty-mark" aria-hidden="true">${profile.difficultyId === difficulty.id ? "✓" : ""}</span>
     </button>`).join("");
 }
@@ -86,7 +87,8 @@ export function renderHome(profile) {
       <article class="mission-card">
         <div class="card-heading"><div><p class="eyebrow">TODAY'S MISSION</p><h2>今天的任务</h2></div><span class="day-badge">DAY ${plan.dayNumber}</span></div>
         <div class="mission-main"><div class="mission-icon" aria-hidden="true">✦</div><div><h3>${escapeHtml(plan.lesson.title)}</h3><p>${escapeHtml(plan.lesson.story)}</p></div></div>
-        <div class="mission-facts"><span><strong>${plan.lesson.warmupMinutes}</strong> 分钟热身</span><span><strong>${plan.lesson.missionMinutes}</strong> 分钟任务</span><span><strong>5</strong> 种玩法</span></div>
+        <div class="mission-facts"><span><strong>3</strong> 关进阶</span><span><strong>10</strong> 个小站</span><span><strong>5</strong> 种玩法</span></div>
+        <div class="gate-preview" aria-label="本次闯关顺序">${SESSION_GATES.map((gate) => `<span><b>${gate.icon}</b>${gate.name}</span>`).join("")}</div>
       </article>
       <article class="progress-card">
         <div class="card-heading"><div><p class="eyebrow">SUMMER JOURNEY</p><h2>暑假探险地图</h2></div><strong class="progress-percent">${progress.percent}%</strong></div>
@@ -117,8 +119,16 @@ export function renderTarget(prompt, typed, lastFeedback) {
 }
 
 function keyLabel(key) {
+  if (key === "1") return "1 !";
+  if (key === "/") return "/ ?";
   if (key === "space") return "space";
   return key;
+}
+
+function keyAriaLabel(key) {
+  if (key === "1") return "数字 1 和感叹号";
+  if (key === "/") return "斜杠和问号";
+  return keyLabel(key);
 }
 
 function renderKey(key, expected, activeKeys, profile, lastPressed) {
@@ -130,7 +140,7 @@ function renderKey(key, expected, activeKeys, profile, lastPressed) {
   if (key === "shift" && requiresShift(expected)) classes.push("is-target");
   if (key === lastPressed) classes.push("is-pressed");
   const masteryPercent = Math.round(mastery * 100);
-  return `<span class="${classes.join(" ")}" data-key="${escapeHtml(key)}" style="--mastery: ${masteryPercent}%" aria-label="${escapeHtml(keyLabel(key))}，熟练度 ${masteryPercent}%">${escapeHtml(keyLabel(key))}</span>`;
+  return `<span class="${classes.join(" ")}" data-key="${escapeHtml(key)}" style="--mastery: ${masteryPercent}%" aria-label="${escapeHtml(keyAriaLabel(key))}，熟练度 ${masteryPercent}%">${escapeHtml(keyLabel(key))}</span>`;
 }
 
 export function renderKeyboard(lesson, profile, expected, lastPressed = "") {
@@ -183,8 +193,42 @@ export function renderBalloonArena(round) {
   </div>`;
 }
 
+export function renderActivityScene(activity, run) {
+  const activityId = activity?.id ?? "star-scout";
+  const stationInActivity = (run?.completedPrompts ?? 0) % 2;
+  if (activityId === "word-train") {
+    return `<div class="activity-scene train-scene" id="activity-scene" aria-hidden="true"><span class="train-engine">➜</span><span class="train-car ${stationInActivity >= 1 ? "is-filled" : ""}">1</span><span class="train-car">2</span></div>`;
+  }
+  if (activityId === "code-lock") {
+    return `<div class="activity-scene code-scene" id="activity-scene" aria-hidden="true"><span class="code-lock">⌁</span><span class="code-light is-on"></span><span class="code-light ${stationInActivity >= 1 ? "is-on" : ""}"></span></div>`;
+  }
+  if (activityId === "rocket-dash") {
+    const fuel = Math.min(100, (run?.streak ?? 0) * 8);
+    return `<div class="activity-scene rocket-scene" id="activity-scene" aria-hidden="true"><span class="dash-rocket">↗</span><span class="rocket-fuel"><i style="width: ${fuel}%"></i></span></div>`;
+  }
+  return `<div class="activity-scene star-scene" id="activity-scene" aria-hidden="true"><span>✦</span><span>✦</span><span>✦</span><span>✦</span><span>✦</span><span>✦</span></div>`;
+}
+
+function renderGateProgress(run, difficulty) {
+  const progress = getSessionProgress(run, difficulty);
+  return `<section class="gate-progress" aria-label="三关进度">
+    <div class="gate-progress__heading"><span>当前关卡</span><strong id="gate-name">${progress.complete ? "三关完成" : progress.gate.name}</strong></div>
+    <div class="gate-steps">${SESSION_GATES.map((gate, index) => {
+      const status = index < run.completedGates ? "done" : index === progress.gateIndex ? "current" : "locked";
+      return `<span class="gate-step gate-step--${status}"><b>${status === "done" ? "✓" : gate.icon}</b><small>${gate.name}</small></span>`;
+    }).join("")}</div>
+    <div class="gate-requirements">
+      <span>正确键 <strong id="gate-correct">${run.correct} / ${progress.gate.minCorrect}</strong></span>
+      <span>准确率 <strong id="gate-accuracy">${Math.round(progress.accuracy * 100)}% / ${Math.round(progress.targetAccuracy * 100)}%</strong></span>
+      <span>小站 <strong id="gate-stations">${run.completedPrompts} / ${progress.gate.minStations}</strong></span>
+    </div>
+  </section>`;
+}
+
 export function renderPractice(profile, run) {
   const difficulty = DIFFICULTIES[run.difficultyId];
+  const progress = getSessionProgress(run, difficulty);
+  const showTargetHint = shouldShowTargetHint(difficulty, progress.gateIndex, run.consecutiveErrors);
   const expected = run.prompt[run.typed.length] ?? "";
   const balloonActive = run.activity.id === "balloon-defense";
   const accuracy = run.total === 0 ? "--" : `${Math.round((run.correct / run.total) * 100)}%`;
@@ -201,15 +245,17 @@ export function renderPractice(profile, run) {
         <div class="lesson-overline"><span>DAY ${run.plan.dayNumber} / 42</span><span>SESSION ${run.plan.sessionNumber} / 2</span></div>
         <div class="lesson-title-row"><div><p class="eyebrow">${escapeHtml(run.lesson.phase)}</p><h1 id="practice-title">${escapeHtml(run.lesson.title)}</h1></div><span class="mission-star" aria-hidden="true">✦</span></div>
         <p class="lesson-story">${escapeHtml(run.lesson.story)}</p>
+        ${renderGateProgress(run, difficulty)}
         <div class="activity-banner activity-banner--${run.activity.id}" id="activity-banner" aria-live="polite"><span class="activity-banner__icon" id="activity-icon" aria-hidden="true">${escapeHtml(run.activity.icon)}</span><div><span class="activity-banner__label">当前玩法</span><strong id="activity-title">${escapeHtml(run.activity.title)}</strong><p id="activity-hint">${escapeHtml(run.activity.hint)}</p></div><span class="activity-banner__count" id="activity-count">第 ${run.completedPrompts + 1} 站</span></div>
-        <div class="flight-track" aria-label="本次任务进度"><span class="track-line"></span><span class="track-fill" id="track-fill" style="width: ${Math.min(100, (run.completedPrompts / 6) * 100)}%"></span><span class="track-planet" id="track-planet" style="left: ${Math.min(94, 4 + (run.completedPrompts / 6) * 90)}%">✦</span><span class="track-label" id="track-label">${run.completedPrompts} / 6 小站</span></div>
-        <div class="target-panel" id="typing-target-panel" aria-live="polite" ${balloonActive ? "hidden" : ""}><span class="target-label">当前星语</span><div class="target-sequence" id="target-sequence" aria-label="目标文字">${renderTarget(run.prompt, run.typed, run.lastFeedback)}</div><span class="target-caption">目标中的 · 代表空格</span><input id="keyboard-capture" class="keyboard-capture" aria-label="键盘练习输入区" autocomplete="off" autocapitalize="off" spellcheck="false" /></div>
+        <div class="flight-track" aria-label="本次任务进度"><span class="track-line"></span><span class="track-fill" id="track-fill" style="width: ${Math.min(100, (run.completedPrompts / 10) * 100)}%"></span><span class="track-planet" id="track-planet" style="left: ${Math.min(94, 4 + (run.completedPrompts / 10) * 90)}%">✦</span><span class="track-label" id="track-label">${run.completedPrompts} / 10 小站</span></div>
+        <div class="target-panel activity-stage activity-stage--${run.activity.id}" id="typing-target-panel" ${balloonActive ? "hidden" : ""}>${renderActivityScene(run.activity, run)}<span class="target-label">当前星语</span><div class="target-sequence" id="target-sequence" aria-label="目标文字">${renderTarget(run.prompt, run.typed, run.lastFeedback)}</div><span class="target-caption">目标中的 · 代表空格</span><input id="keyboard-capture" class="keyboard-capture" aria-label="键盘练习输入区" autocomplete="off" autocapitalize="off" spellcheck="false" /></div>
         <div id="balloon-arena" ${balloonActive ? "" : "hidden"}>${renderBalloonArena(run.balloonRound)}</div>
         <div class="feedback-line feedback-line--${run.lastFeedback}" id="feedback-line" role="status">${escapeHtml(run.feedbackText)}</div>
         <div class="live-stats" aria-label="本次练习统计"><div><span>准确率</span><strong id="accuracy-value">${accuracy}</strong></div><div><span>连续正确</span><strong id="streak-value">${run.streak}<small> 次</small></strong></div><div><span>星星</span><strong id="score-value">${run.score}</strong></div></div>
-        <button class="finish-action" type="button" data-action="finish" ${run.total === 0 ? "disabled" : ""}>结束本次任务</button>
+        <button class="finish-action" type="button" data-action="finish" ${run.total === 0 ? "disabled" : ""}>结束并保存本次练习</button>
+        <p class="finish-note">完成三关会自动结算；提前结束不会推进课程。</p>
       </section>
-      <aside class="keyboard-column" aria-labelledby="keyboard-title"><div class="keyboard-heading"><div><p class="eyebrow">YOUR NAVIGATOR</p><h2 id="keyboard-title">小手导航</h2></div><span class="target-chip" id="target-chip">${balloonActive ? "发射" : escapeHtml(keyLabel(normalizeKey(expected)))}</span></div><p class="keyboard-note" id="keyboard-note">${balloonActive ? "按字母键发射能量弹" : difficulty.hints ? "目标键会亮起来" : "跟着目标，自己寻找"}</p><div id="keyboard-container">${renderKeyboard(run.lesson, profile, balloonActive ? "" : expected, run.lastPressed)}</div><div class="finger-legend"><span><i class="legend-dot legend-dot--mint"></i>已经认识</span><span><i class="legend-dot legend-dot--yellow"></i>当前目标</span></div></aside>
+      <aside class="keyboard-column" aria-labelledby="keyboard-title"><div class="keyboard-heading"><div><p class="eyebrow">YOUR NAVIGATOR</p><h2 id="keyboard-title">小手导航</h2></div><span class="target-chip" id="target-chip">${balloonActive ? "发射" : showTargetHint ? escapeHtml(keyLabel(normalizeKey(expected))) : "自己找"}</span></div><p class="keyboard-note" id="keyboard-note">${balloonActive ? "按字母键发射能量弹" : showTargetHint ? "目标键会亮起来" : "这一关不亮键，连续出错后会提示"}</p><div id="keyboard-container">${renderKeyboard(run.lesson, profile, balloonActive || !showTargetHint ? "" : expected, run.lastPressed)}</div><div class="finger-legend"><span><i class="legend-dot legend-dot--mint"></i>已经认识</span><span><i class="legend-dot legend-dot--yellow"></i>当前目标</span></div></aside>
     </div>
     <div id="pause-layer">${run.paused ? renderPauseLayer() : ""}</div>
     <div class="sr-only" aria-live="polite" id="screen-announcer">${escapeHtml(run.announcement)}</div>
@@ -223,6 +269,13 @@ function renderPauseLayer() {
 export function renderResult(profile, result) {
   const nextPlan = getDailyPlan(profile);
   const accuracy = Math.round(result.accuracy * 100);
-  const message = accuracy >= 92 ? "星光收到了！今天的手指很稳。" : "每一次练习都会让键位更熟悉。";
-  return `<main class="app-shell result-shell"><header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools">${renderAudioControls(profile)}<div class="privacy-chip"><span aria-hidden="true">●</span> 进度已保存</div></div></header><section class="result-content page-width"><div class="result-burst" aria-hidden="true"><span>✦</span><span>✦</span><span>✦</span><div>★</div></div><p class="eyebrow">MISSION COMPLETE</p><h1>${accuracy >= 92 ? "漂亮的降落！" : "探险完成！"}</h1><p class="result-message">${message}</p><div class="result-score-grid"><div><strong>${accuracy}%</strong><span>准确率</span></div><div><strong>${result.score}</strong><span>收集星星</span></div><div><strong>${result.correct}</strong><span>正确键</span></div></div><div class="next-mission"><span class="next-icon" aria-hidden="true">✦</span><div><span>下一站</span><strong>第 ${nextPlan.dayNumber} 天 · 第 ${nextPlan.sessionNumber} 次 · ${escapeHtml(nextPlan.lesson.title)}</strong></div></div><div class="dialog-actions"><button class="primary-action" type="button" data-action="home">回到课程地图</button><button class="secondary-action" type="button" data-action="retry">再飞一次</button></div></section></main>`;
+  const completed = result.completed === true;
+  const message = completed
+    ? "三关完成！准确、耐心和节奏都收进了星光。"
+    : result.timedOut ? "时间到了，本次练习已保存；下次从同一课次继续挑战。" : "本次练习已保存，休息好再来完成三关。";
+  const status = completed
+    ? `<div class="next-mission"><span class="next-icon" aria-hidden="true">✦</span><div><span>下一站</span><strong>第 ${nextPlan.dayNumber} 天 · 第 ${nextPlan.sessionNumber} 次 · ${escapeHtml(nextPlan.lesson.title)}</strong></div></div>`
+    : `<div class="next-mission next-mission--incomplete"><span class="next-icon" aria-hidden="true">↺</span><div><span>本次状态</span><strong>课程进度没有推进，键位练习数据已经保存</strong></div></div>`;
+  const continueAction = completed ? `<button class="primary-action" type="button" data-action="continue">继续下一站</button>` : "";
+  return `<main class="app-shell result-shell result-shell--${completed ? "complete" : "incomplete"}"><header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools">${renderAudioControls(profile)}<div class="privacy-chip"><span aria-hidden="true">●</span> ${completed ? "正式进度已保存" : "练习数据已保存"}</div></div></header><section class="result-content page-width"><div class="result-burst" aria-hidden="true"><span>✦</span><span>✦</span><span>✦</span><div>${completed ? "★" : "↺"}</div></div><p class="eyebrow">${completed ? "MISSION COMPLETE" : "PRACTICE SAVED"}</p><h1>${completed ? "三关完成，漂亮降落！" : "本次练习已保存"}</h1><p class="result-message">${message}</p><div class="result-score-grid"><div><strong>${accuracy}%</strong><span>准确率</span></div><div><strong>${result.score}</strong><span>收集星星</span></div><div><strong>${result.correct}</strong><span>正确键</span></div></div>${status}<div class="dialog-actions">${continueAction}<button class="secondary-action" type="button" data-action="retry">${completed ? "再飞一次" : "继续本课次"}</button><button class="secondary-action" type="button" data-action="home">回到课程地图</button></div></section></main>`;
 }

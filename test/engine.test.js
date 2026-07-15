@@ -7,6 +7,7 @@ import {
   ACTIVITIES,
   KEY_ROWS,
   choosePrompt,
+  chooseActivityPrompt,
   completeSession,
   createProfile,
   getActivity,
@@ -105,6 +106,23 @@ test("prompt selection rotates matching drills instead of repeating the first on
   assert.equal(choosePrompt(lesson, profile, 0), "fj");
   assert.equal(choosePrompt(lesson, profile, 1), "jf");
   assert.notEqual(choosePrompt(lesson, profile, 2), choosePrompt(lesson, profile, 0));
+});
+
+test("activity prompts grow from short warmups to longer challenge drills", () => {
+  const profile = createProfile();
+  const lesson = getLesson(1);
+  const activities = [
+    ["star-scout", 6],
+    ["word-train", 8],
+    ["code-lock", 10],
+    ["rocket-dash", 12],
+  ];
+
+  for (const [activityId, minimumLength] of activities) {
+    const prompt = chooseActivityPrompt(lesson, profile, { id: activityId }, 0);
+    assert.ok(prompt.length >= minimumLength, `${activityId} should contain at least ${minimumLength} keys`);
+    assert.deepEqual(getPromptKeys(prompt).filter((key) => !lesson.activeKeys.includes(key)), []);
+  }
 });
 
 test("practice activities rotate through five short game modes", () => {

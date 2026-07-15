@@ -226,6 +226,21 @@ export function choosePrompt(lesson, profile, offset = 0) {
   return candidates[Math.abs(safeOffset) % candidates.length];
 }
 
+const ACTIVITY_PROMPT_MIN_LENGTHS = Object.freeze({
+  "star-scout": 6,
+  "word-train": 8,
+  "code-lock": 10,
+  "rocket-dash": 12,
+});
+
+export function chooseActivityPrompt(lesson, profile, activity, offset = 0) {
+  const basePrompt = choosePrompt(lesson, profile, offset);
+  const minimumLength = ACTIVITY_PROMPT_MIN_LENGTHS[activity?.id] ?? basePrompt.length;
+  let prompt = basePrompt;
+  while (prompt.length < minimumLength) prompt += basePrompt;
+  return prompt;
+}
+
 export function completeSession(profile, result = {}) {
   if (result.completed !== true) return profile;
   const plan = getDailyPlan(profile);
