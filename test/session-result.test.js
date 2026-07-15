@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { completeSession, createProfile } from "../src/engine.js";
 
-test("a timed session with zero input stores a safe zero-accuracy result", () => {
+test("only an explicit completed result stores a safe zero-accuracy history entry", () => {
   const profile = completeSession(createProfile(), {
     completed: true,
     accuracy: 0,

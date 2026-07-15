@@ -77,7 +77,7 @@ export function renderHome(profile) {
     <section class="home-hero page-width">
       <div class="hero-copy">
         <p class="eyebrow">第 ${plan.dayNumber} 天 · 第 ${plan.sessionNumber} 次探险</p>
-        <h1>准备好，<em>小小键盘星探</em>！</h1>
+        <h1>准备好，<em>小小键盘星探！</em></h1>
         <p class="hero-story">今天去 <strong>${escapeHtml(plan.lesson.title)}</strong>，让每一颗键位星星都找到自己的位置。</p>
         <button class="primary-action" type="button" data-action="start"><span aria-hidden="true">▶</span> 开始今天的探险</button>
       </div>

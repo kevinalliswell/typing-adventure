@@ -74,6 +74,7 @@ function balloonFrame(now) {
       run.consecutiveErrors += 1;
       profile = recordKey(profile, key, false);
     }
+    saveProfile(profile);
     run.streak = 0;
     run.lastFeedback = "wrong";
     run.feedbackText = `漏掉 ${missedKeys.length} 颗气球，稳稳瞄准下一颗`;
@@ -259,6 +260,7 @@ function acceptKey(event) {
   run.total += 1;
   profile = recordKey(profile, expectedKey, isCorrect);
   if (expectedIsUppercase) profile = recordKey(profile, "shift", isCorrect);
+  saveProfile(profile);
   run.lastPressed = normalizeKey(actual);
   if (isCorrect) {
     sound.correct();
@@ -307,6 +309,7 @@ function handleBalloonInput(event) {
   run.lastPressed = key;
   run.total += 1;
   profile = recordKey(profile, key, result.shot);
+  saveProfile(profile);
   if (result.shot) {
     run.balloonRound = result.round;
     run.completedPrompts += 1;

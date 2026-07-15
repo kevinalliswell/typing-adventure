@@ -1,5 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const loopbackHosts = ["127.0.0.1", "localhost"];
+const noProxy = new Set([
+  ...(process.env.NO_PROXY ?? "").split(",").filter(Boolean),
+  ...(process.env.no_proxy ?? "").split(",").filter(Boolean),
+  ...loopbackHosts,
+]);
+process.env.NO_PROXY = [...noProxy].join(",");
+process.env.no_proxy = process.env.NO_PROXY;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,

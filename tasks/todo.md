@@ -16,28 +16,28 @@
 
 ## Task 3: 主循环接入
 
-- [ ] 三关达成后自动正式结算；提前结束和超时不推进。
-- [ ] 难度提示按关卡和连续错误实际变化。
-- [ ] 气球漏掉计入错误与弱键统计。
+- [x] 三关达成后自动正式结算；提前结束和超时不推进。
+- [x] 难度提示按关卡和连续错误实际变化。
+- [x] 气球漏掉计入错误与弱键统计。
 - Verify: `npm test`
 
 ## Task 4: 儿童 UI 与五玩法
 
-- [ ] 三关进度和剩余目标清晰可见。
-- [ ] 五种玩法在一次闯关内出现并有不同画面/反馈。
-- [ ] 屏幕键盘完整，辅助文字可读，按钮键盘操作不误记输入。
+- [x] 三关进度和剩余目标清晰可见。
+- [x] 五种玩法在一次闯关内出现并有不同画面/反馈。
+- [x] 屏幕键盘完整，辅助文字可读，按钮键盘操作不误记输入。
 - Verify: `npm test && npm run build`，真实浏览器桌面与移动检查。
 
 ## Task 5: E2E 与文档
 
-- [ ] Playwright 固定为 devDependency 并提供 `npm run test:e2e`。
-- [ ] 关键完成、重练、下一站、课程键位和难度 E2E 通过。
-- [ ] README、课程计划、changelog 与实现一致。
+- [x] Playwright 固定为 devDependency 并提供 `npm run test:e2e`。
+- [x] 关键完成、重练、下一站、课程键位和难度 E2E 通过。
+- [x] README、课程计划、changelog 与实现一致。
 - Verify: `npm test && npm run test:e2e && npm run build`
 
 ## Task 6: 完成审计
 
-- [ ] `npm audit --audit-level=high` 通过。
-- [ ] 浏览器控制台无错误/警告，320/768/1024/1440px 可用。
-- [ ] 逐项核对 `docs/progressive-session-spec.md` 成功条件。
-- [ ] 自审无未处理 Required/Critical 问题，工作区变更均在预期范围。
+- [x] `npm audit --audit-level=high` 通过。
+- [x] 浏览器控制台无错误/警告，320/768/1024/1440px 可用。
+- [x] 逐项核对 `docs/progressive-session-spec.md` 成功条件。
+- [x] 自审无未处理 Required/Critical 问题，工作区变更均在预期范围。

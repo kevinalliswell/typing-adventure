@@ -2504,6 +2504,45 @@ strong {
   }
 }
 
+@media (max-width: 400px) {
+  .hero-copy h1 {
+    font-size: 2.1rem;
+  }
+
+  .topbar--practice {
+    gap: 6px;
+  }
+
+  .topbar--practice .brand-lockup {
+    margin-right: 0;
+  }
+
+  .topbar--practice .brand-lockup > div:last-child {
+    display: none;
+  }
+
+  .topbar--practice .brand-orbit,
+  .topbar--practice .icon-action {
+    width: 32px;
+    height: 32px;
+  }
+
+  .topbar--practice .audio-controls {
+    gap: 3px;
+  }
+
+  .topbar--practice .audio-toggle {
+    width: 27px;
+    height: 27px;
+  }
+
+  .topbar--practice .timer-pill {
+    min-width: 60px;
+    padding-inline: 5px;
+    font-size: 0.74rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

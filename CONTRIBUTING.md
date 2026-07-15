@@ -13,6 +13,7 @@ npm run dev
 
 ```bash
 npm test
+npm run test:e2e
 npm run build
 npm audit --audit-level=high
 ```
@@ -22,7 +23,7 @@ npm audit --audit-level=high
 - 新行为先补测试，再实现功能。
 - 不引入远程字体、图片、音频、统计服务或账号系统，除非先讨论并更新项目边界文档。
 - 输入内容和练习进度保持本地处理，不提交真实用户数据、密钥或 `.env` 文件。
-- UI 改动需要检查键盘操作、屏幕阅读器名称和 390px 移动端布局。
+- UI 改动需要检查键盘操作、屏幕阅读器名称，以及 320px、768px、1024px、1440px 布局。
 - Pull Request 请说明改动目的、验证命令和仍存在的限制。
 
 ## 提交方式

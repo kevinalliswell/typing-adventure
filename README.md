@@ -10,9 +10,11 @@
 ## 特性
 
 - 42 天课程、每天 2 次练习、三档难度和弱键自适应复习。
-- 五种轮换玩法：找星星、气球防线、小火车、密码门、火箭冲刺。
+- 每课次依次完成热身关、探险关、冲刺关；10 个小站由易到难，完整通关才推进正式课程。
+- 五种轮换玩法：找星星、气球防线、小火车、密码门、火箭冲刺，每两个小站切换一次。
 - 气球防线包含下落气球、键盘炮台、子弹拖尾、炮口闪光、命中爆炸和音效反馈。
-- 屏幕键盘、键位熟练度、准确率、连续正确和星星积分反馈。
+- 完整屏幕键盘、物理 Shift 标点组合、键位熟练度、准确率、连续正确和星星积分反馈。
+- 提前结束或超时会保存已经产生的键位练习数据，但不会误推进 84 课次进度。
 - 进度保存在浏览器本地；音效由 Web Audio 生成，配音使用浏览器内置语音能力。
 - 原生 ES Modules + Vite，无运行时图片、字体、音频或统计服务请求。
 
@@ -26,6 +28,7 @@ npm run dev
 ```
 
 开发服务默认运行在 `http://localhost:5191`。打开浏览器后点击“开始今天的探险”即可开始。
+首次运行浏览器测试前，请执行 `npx playwright install chromium` 安装与项目版本匹配的 Chromium。
 
 ## 常用命令
 
@@ -33,6 +36,7 @@ npm run dev
 | --- | --- |
 | `npm run dev` | 启动端口 `5191` 的开发服务 |
 | `npm test` | 运行 Node.js 单元测试 |
+| `npm run test:e2e` | 运行 Playwright Chromium 浏览器回归 |
 | `npm run build` | 创建生产构建 |
 | `npm run preview` | 预览生产构建 |
 | `npm audit --audit-level=high` | 检查高危及以上依赖漏洞 |
@@ -40,12 +44,14 @@ npm run dev
 ## 项目结构
 
 - `src/engine.js`：42 天课程、三档难度、按键统计和弱键自适应。
+- `src/session.js`：三关累计目标、准确率与渐进提示规则。
 - `src/balloon-game.js`：气球生成、下落、子弹飞行、命中爆炸和状态清理。
 - `src/storage.js`：本地进度读写与损坏数据防护。
 - `src/audio.js`：Web Audio 发射/爆炸/输入音效和可选浏览器配音。
 - `src/main.js`：页面状态、练习循环、动画反馈和键盘事件。
 - `src/ui.js` / `src/styles.css`：儿童化“键盘星球”视觉系统、五种玩法和响应式布局。
-- `test/`：课程、输入、本地存储、声音和气球玩法的单元测试。
+- `test/`：课程、闯关、输入、渲染、本地存储、声音和气球玩法的单元测试。
+- `e2e/`：未完成不升级、三关通关、重练、下一站、难度提示和完整键盘的浏览器回归。
 
 课程细节见 [`docs/course-plan.md`](./docs/course-plan.md)：6 周、84 次练习，每天两次，每次约 20 分钟。
 
@@ -61,7 +67,7 @@ npm run dev
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request。开始前请阅读 [`CONTRIBUTING.md`](./CONTRIBUTING.md)，本地提交前至少运行 `npm test` 和 `npm run build`。
+欢迎提交 Issue 和 Pull Request。开始前请阅读 [`CONTRIBUTING.md`](./CONTRIBUTING.md)，本地提交前至少运行 `npm test`、`npm run test:e2e` 和 `npm run build`。
 
 ## 许可证
 

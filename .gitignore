@@ -2,6 +2,8 @@ node_modules/
 dist/
 output/
 .playwright-cli/
+playwright-report/
+test-results/
 coverage/
 .DS_Store
 *.log
