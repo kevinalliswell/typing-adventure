@@ -15,6 +15,13 @@ test("uppercase targets require the matching uppercase key event", () => {
   assert.equal(isCorrectInput("A", "a"), false);
 });
 
+test("question and exclamation marks teach their physical Shift combinations", () => {
+  assert.equal(requiresShift("?"), true);
+  assert.equal(requiresShift("!"), true);
+  assert.equal(isCorrectInput("?", "?"), true);
+  assert.equal(isCorrectInput("!", "!"), true);
+});
+
 test("lowercase and space targets accept their normal browser key values", () => {
   assert.equal(requiresShift("f"), false);
   assert.equal(isCorrectInput("f", "f"), true);

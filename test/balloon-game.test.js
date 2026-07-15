@@ -26,6 +26,11 @@ test("falling balloons move downward and eventually count as misses", () => {
 
   assert.ok(falling.balloons[0].y > round.balloons[0].y);
   assert.ok(missed.misses >= 1);
+  assert.ok(missed.recentMisses.length >= 1);
+  assert.ok(missed.recentMisses.every((key) => key === "f"));
+
+  const nextFrame = updateBalloonRound(missed, 0.1, () => 0.5);
+  assert.deepEqual(nextFrame.recentMisses, []);
 });
 
 test("pressing a balloon letter shoots the lowest matching balloon", () => {

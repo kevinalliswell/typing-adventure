@@ -1,32 +1,61 @@
-# Implementation Plan: 键盘星球 Typing Adventure
+# Implementation Plan: 渐进式三关课程修复
 
 ## Overview
 
-Build a standalone, offline-first English QWERTY typing game for children aged 6-8. The app uses the open-source `xiaolai/type-review` project's adaptive lesson idea: letter mastery is measured per key, weak keys receive extra practice, and new keys unlock gradually. The product surface is redesigned as a colorful keyboard adventure with a six-week summer course, two 20-minute sessions per day, three difficulty levels, a visible on-screen keyboard, and local progress only.
+以纯 `session` 规则为单一真源，先修复正式完成判定和课程物理键位，再让主循环、五玩法和 UI 消费同一规则，最后补齐可重复的 E2E 与文档。
 
 ## Architecture Decisions
 
-- Use Vite + native ES modules in `typing-adventure/`; keep the existing root fruit game untouched.
-- Keep course rules and adaptive scoring in pure `src/engine.js`; keep browser storage in `src/storage.js`; keep DOM orchestration in `src/main.js`.
-- Use `localStorage` for the first version because the profile is small and local-only. Guard parsing and cap history so damaged storage cannot break startup.
-- Use CSS/HTML shapes and motion for the child-friendly visual world; avoid runtime image/network dependencies so the practice app works offline after loading.
-- Follow the upstream MIT license and document the inspiration in the project README.
+- 新建 `src/session.js`，集中定义三关目标、提示降级和正式完成判定。
+- 保留 `engine.js` 管理课程；课程声明必须显式覆盖所有提示字符，不再自动提前解锁。
+- 每两个小站切换玩法；活动提示生成和视觉状态保持轻量，不引入框架。
+- 未通关结果保存键位统计但不写正式 history；通关后自动结算并只推进一次。
 
-## Course Design
+## Dependency Graph
 
-- 42 daily lessons, 6 weeks, 84 sessions total, approximately 28 hours across the summer.
-- Each day has a 5-minute warm-up and a 15-minute mission inside a 20-minute session target.
-- Week 1: F/J anchors and home row. Week 2: top row. Week 3: bottom row. Week 4: mixed words and spaces. Week 5: Shift, punctuation and numbers. Week 6: short sentences, accuracy and celebration runs.
-- `gentle`, `explorer`, and `rocket` difficulty presets adjust hints and accuracy goals without changing the child-facing lesson order.
+课程物理键位 + 三关纯规则
+    -> 主循环完成判定、漏球记错、提示策略
+        -> 五玩法 UI、结果页和无障碍行为
+            -> E2E、文档和发布验证
 
-## Verification Gates
+## Task List
 
-- Pure engine tests cover lesson count, unlock order, adaptive weak-key focus, key-stat normalization and difficulty presets.
-- Browser checks cover the start flow, keyboard input, correct/error feedback, pause/resume, session completion, progress persistence, responsive layout, accessibility names, and a clean console.
-- Final checks: `npm test`, `npm run build`, and a real browser pass at mobile and desktop widths.
+### Phase 1: 规则基础
 
-## Boundaries
+- [x] Task 1: 用失败测试定义物理键位、显式解锁和三关完成规则。
+- [x] Task 2: 实现 `session.js`、课程修复、五玩法每两站轮换和未完成不推进。
 
-- Always: keep the app playable without an account or network, keep typed content local, test new behavior, and preserve the existing root project.
-- Ask first: adding external services, user accounts, multiplayer, cloud sync, or changing the root project's package/dependencies.
-- Never: collect telemetry, ship secrets, require a remote font/image/audio service, or silently discard saved progress.
+### Checkpoint: Foundation
+
+- [x] 相关单元测试通过；完整测试与构建保持可运行。
+
+### Phase 2: 浏览器闭环
+
+- [ ] Task 3: 主循环接入三关、难度提示、气球漏球和安全提前结束。
+- [ ] Task 4: 重做三关进度、完整屏幕键盘、五玩法面板和完成/未完成结果页。
+
+### Checkpoint: Core Features
+
+- [ ] 完整单元测试通过；真实浏览器可走完三关且进度只推进一次。
+
+### Phase 3: 工程质量
+
+- [ ] Task 5: 更新 E2E 依赖、CI、课程文档、README 和 changelog。
+- [ ] Task 6: 完成响应式、无障碍、控制台、构建、审计和代码复审。
+
+### Checkpoint: Complete
+
+- [ ] 规格中的所有成功条件均有直接证据。
+
+## Risks and Mitigations
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| 早期短提示导致过快过关 | 高 | 活动提示按玩法扩展长度，同时要求正确键与小站双阈值 |
+| 后期长句导致负担过重 | 中 | 正确键为累计最低值，小站固定 10 个且允许 20 分钟内稳定完成 |
+| 气球动画事件重复记错 | 高 | 每帧只暴露本帧 `recentMisses`，用单元测试验证只计一次 |
+| 主循环继续膨胀 | 中 | 规则放入纯模块，主循环只负责编排和 DOM 更新 |
+
+## Open Questions
+
+无阻塞问题；按用户授权的默认规则执行。

@@ -5,6 +5,7 @@ import {
   COURSE,
   DIFFICULTIES,
   ACTIVITIES,
+  KEY_ROWS,
   choosePrompt,
   completeSession,
   createProfile,
@@ -23,6 +24,7 @@ test("the summer course has 42 daily lessons with two sessions per day", () => {
   assert.equal(getDailyPlan(createProfile()).sessionNumber, 1);
 
   const afterOneSession = completeSession(createProfile(), {
+    completed: true,
     accuracy: 0.95,
     elapsedSeconds: 1200,
   });
@@ -30,6 +32,7 @@ test("the summer course has 42 daily lessons with two sessions per day", () => {
   assert.equal(getDailyPlan(afterOneSession).sessionNumber, 2);
 
   const afterTwoSessions = completeSession(afterOneSession, {
+    completed: true,
     accuracy: 0.95,
     elapsedSeconds: 1200,
   });
@@ -51,6 +54,21 @@ test("course keys unlock in a gentle home-row to full-keyboard progression", () 
   assert.ok(fullAlphabet.activeKeys.includes("z"));
   assert.ok(punctuation.activeKeys.includes("space"));
   assert.equal(getLesson(42).phase, "celebration");
+});
+
+test("declared course order is not bypassed by prompt inference", () => {
+  assert.deepEqual(getLesson(3).newKeys, ["s", "l"]);
+  assert.equal(getLesson(3).activeKeys.includes("a"), false);
+  assert.equal(getLesson(11).activeKeys.includes("z"), false);
+  assert.equal(getLesson(26).activeKeys.includes("shift"), false);
+  assert.ok(getLesson(30).newKeys.includes("shift"));
+});
+
+test("the physical keyboard model includes every taught home-row and punctuation key", () => {
+  assert.deepEqual(KEY_ROWS.home, ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"]);
+  assert.deepEqual(KEY_ROWS.bottom, ["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"]);
+  assert.deepEqual(getPromptKeys("Are you ok?"), ["shift", "a", "r", "e", "space", "y", "o", "u", "k", "/"]);
+  assert.deepEqual(getPromptKeys("Wow!"), ["shift", "w", "o", "1"]);
 });
 
 test("every prompt only uses keys unlocked for its lesson", () => {
@@ -96,10 +114,22 @@ test("practice activities rotate through five short game modes", () => {
     ["star-scout", "balloon-defense", "word-train", "code-lock", "rocket-dash", "star-scout"],
   );
   assert.equal(getActivityForPrompt(0).id, "star-scout");
-  assert.equal(getActivityForPrompt(2).id, "star-scout");
-  assert.equal(getActivityForPrompt(3).id, "balloon-defense");
-  assert.equal(getActivityForPrompt(6).id, "word-train");
-  assert.equal(getActivityForPrompt(12).id, "rocket-dash");
+  assert.equal(getActivityForPrompt(2).id, "balloon-defense");
+  assert.equal(getActivityForPrompt(4).id, "word-train");
+  assert.equal(getActivityForPrompt(6).id, "code-lock");
+  assert.equal(getActivityForPrompt(8).id, "rocket-dash");
+});
+
+test("an incomplete attempt cannot advance formal course progress", () => {
+  const profile = createProfile();
+  const unchanged = completeSession(profile, {
+    completed: false,
+    accuracy: 1,
+    elapsedSeconds: 30,
+  });
+
+  assert.equal(unchanged.completedSessions, 0);
+  assert.equal(unchanged.history.length, 0);
 });
 
 test("recordKey normalizes letters and tracks accuracy without negative counts", () => {
@@ -122,7 +152,7 @@ test("difficulty presets give children a clear pressure curve", () => {
 test("course progress stops at the final session", () => {
   const completed = { ...createProfile(), completedSessions: 84 };
   const plan = getDailyPlan(completed);
-  const next = completeSession(completed, { accuracy: 1, elapsedSeconds: 1200 });
+  const next = completeSession(completed, { completed: true, accuracy: 1, elapsedSeconds: 1200 });
 
   assert.equal(plan.dayNumber, 42);
   assert.equal(plan.sessionNumber, 2);

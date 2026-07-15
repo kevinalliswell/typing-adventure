@@ -5,7 +5,7 @@ export function isIgnoredKey(key) {
 }
 
 export function requiresShift(character) {
-  return typeof character === "string" && /^[A-Z]$/.test(character);
+  return typeof character === "string" && (/^[A-Z]$/.test(character) || character === "?" || character === "!");
 }
 
 export function isCorrectInput(expected, actual) {

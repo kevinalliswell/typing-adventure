@@ -5,6 +5,7 @@ import { completeSession, createProfile } from "../src/engine.js";
 
 test("a timed session with zero input stores a safe zero-accuracy result", () => {
   const profile = completeSession(createProfile(), {
+    completed: true,
     accuracy: 0,
     elapsedSeconds: 1200,
     completedAt: "2026-07-13T00:00:00.000Z",

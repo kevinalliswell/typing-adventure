@@ -1,12 +1,43 @@
 # Task Checklist
 
-- [x] Establish the standalone Vite project and documented scope.
-- [x] Implement the 42-day course model and adaptive key-stat engine.
-- [x] Add unit tests for progression, difficulty and adaptive focus.
-- [x] Build the home dashboard and child-friendly visual identity.
-- [x] Build the live practice loop with hidden input, target text and on-screen keyboard.
-- [x] Add feedback effects, pause/resume, session timer and result state.
-- [x] Add local progress persistence and the six-week progress view.
-- [x] Add five rotating activities, balloon projectiles, explosions and audio feedback.
-- [x] Verify responsive layout, accessibility and browser console health.
-- [x] Run final tests/build and perform code quality review.
+## Task 1: 失败测试定义规则
+
+- [x] 三关累计阈值、最终准确率和提示降级测试先失败。
+- [x] 未通关结果不得推进正式课次测试先失败。
+- [x] G/H、标点物理键和显式课程解锁测试先失败。
+- Verify: `npm test`
+
+## Task 2: 纯规则与课程修复
+
+- [x] 新增 `src/session.js` 并让规则测试通过。
+- [x] 修正提前 A/Z/Shift、Shift 标点映射和五玩法轮换。
+- [x] `completeSession` 只接受明确完成的结果。
+- Verify: `npm test && npm run build`
+
+## Task 3: 主循环接入
+
+- [ ] 三关达成后自动正式结算；提前结束和超时不推进。
+- [ ] 难度提示按关卡和连续错误实际变化。
+- [ ] 气球漏掉计入错误与弱键统计。
+- Verify: `npm test`
+
+## Task 4: 儿童 UI 与五玩法
+
+- [ ] 三关进度和剩余目标清晰可见。
+- [ ] 五种玩法在一次闯关内出现并有不同画面/反馈。
+- [ ] 屏幕键盘完整，辅助文字可读，按钮键盘操作不误记输入。
+- Verify: `npm test && npm run build`，真实浏览器桌面与移动检查。
+
+## Task 5: E2E 与文档
+
+- [ ] Playwright 固定为 devDependency 并提供 `npm run test:e2e`。
+- [ ] 关键完成、重练、下一站、课程键位和难度 E2E 通过。
+- [ ] README、课程计划、changelog 与实现一致。
+- Verify: `npm test && npm run test:e2e && npm run build`
+
+## Task 6: 完成审计
+
+- [ ] `npm audit --audit-level=high` 通过。
+- [ ] 浏览器控制台无错误/警告，320/768/1024/1440px 可用。
+- [ ] 逐项核对 `docs/progressive-session-spec.md` 成功条件。
+- [ ] 自审无未处理 Required/Critical 问题，工作区变更均在预期范围。

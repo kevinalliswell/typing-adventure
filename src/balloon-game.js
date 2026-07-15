@@ -34,6 +34,7 @@ export function createBalloonRound(keys, random = Math.random) {
     shotFlash: 0,
     lastShotKey: "",
     projectiles: [],
+    recentMisses: [],
     nextShotId: 0,
     status: "playing",
     seedHint: safeRandom(random),
@@ -63,6 +64,7 @@ export function updateBalloonRound(round, elapsedSeconds, random = Math.random) 
   if (round.status !== "playing") return round;
   const elapsed = Math.max(0, Number(elapsedSeconds) || 0);
   let misses = 0;
+  const recentMisses = [];
   const balloons = round.balloons.flatMap((balloon) => {
     if (balloon.state === "exploding") {
       const explodeIn = balloon.explodeIn - elapsed;
@@ -71,6 +73,7 @@ export function updateBalloonRound(round, elapsedSeconds, random = Math.random) 
     const nextY = balloon.y + balloon.speed * elapsed;
     if (nextY > round.height - balloon.size) {
       misses += 1;
+      recentMisses.push(balloon.key);
       return [];
     }
     return [{ ...balloon, y: nextY }];
@@ -91,6 +94,7 @@ export function updateBalloonRound(round, elapsedSeconds, random = Math.random) 
     balloons,
     projectiles,
     misses: round.misses + misses,
+    recentMisses,
     spawnIn: round.spawnIn - elapsed,
     shotFlash: Math.max(0, round.shotFlash - elapsed),
     lastShotKey: round.shotFlash > 0 ? round.lastShotKey : "",

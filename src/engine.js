@@ -40,23 +40,23 @@ export const ACTIVITIES = Object.freeze([
   Object.freeze({ id: "rocket-dash", title: "火箭冲刺", icon: "↗", hint: "准确地冲过这一小站" }),
 ]);
 
-const HOME_ROW = ["a", "s", "d", "f", "j", "k", "l", ";"];
+const HOME_ROW = ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"];
 const TOP_ROW = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
-const BOTTOM_ROW = ["z", "x", "c", "v", "b", "n", "m"];
+const BOTTOM_ROW = ["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"];
 
 const LESSON_SPECS = [
   ["anchor", "找到 F 和 J", "在键盘星球找到两颗定位星", ["f", "j"], ["fj", "jf", "fjf", "jfj"]],
   ["anchor", "手指回家", "让 F 和 J 变成小手的家", ["d", "k"], ["fd", "jk", "dj", "kf", "fjd"]],
-  ["home-row", "左右邻居", "认识 D 和 K 的左右邻居", ["s", "l"], ["ask", "fall", "sad", "lad", "flask"]],
+  ["home-row", "左右邻居", "认识 D 和 K 的左右邻居", ["s", "l"], ["sdf", "jkl", "fds", "lkj", "sfd", "jlk"]],
   ["home-row", "小手伸展", "A 和分号让小手伸展开", ["a", ";"], ["a;", "sad", "lad", "all", "ask"]],
   ["home-row", "中间的 G 和 H", "两只手一起出发", ["g", "h"], ["had", "hash", "flag", "glass", "half"]],
   ["home-row", "回家路线", "沿着 ASDF 和 JKL; 回家", [], ["asdf", "jkl;", "sad", "fall", "ask", "had"]],
   ["home-row", "家排小队", "家排键位集结完毕", [], ["a", "sad", "fall", "hall", "ask", "flag", "glass"]],
   ["top-row", "E 和 I", "两颗新星从上方升起", ["e", "i"], ["die", "fill", "hide", "like", "life"]],
-  ["top-row", "R 和 U", "小火箭学会向上飞", ["r", "u"], ["run", "rush", "fur", "rule", "drum"]],
+  ["top-row", "R 和 U", "小火箭学会向上飞", ["r", "u"], ["rush", "fur", "rule", "hire", "sure"]],
   ["top-row", "W 和 O", "遇见 W 和 O 两颗星", ["w", "o"], ["wow", "wood", "word", "work", "how"]],
-  ["top-row", "Q 和 P", "地图的两端也能找到", ["q", "p"], ["pop", "quip", "quiz", "pipe", "pup"]],
-  ["top-row", "T 和 Y", "穿过 T Y 星云", ["t", "y"], ["try", "type", "tiny", "stay", "story"]],
+  ["top-row", "Q 和 P", "地图的两端也能找到", ["q", "p"], ["pop", "quip", "pip", "pipe", "pup"]],
+  ["top-row", "T 和 Y", "穿过 T Y 星云", ["t", "y"], ["try", "type", "stay", "toy", "yet"]],
   ["top-row", "上排混合", "让上排星星排成队", [], ["type", "write", "quiet", "power", "quite", "tower"]],
   ["top-row", "上排单词路", "沿着上排单词路前进", [], ["purple", "pretty", "quiet", "yeti", "water", "pilot"]],
   ["bottom-row", "C 和 M", "下方的 C M 月亮升起", ["c", "m"], ["come", "camp", "milk", "music", "map"]],
@@ -70,16 +70,16 @@ const LESSON_SPECS = [
   ["words", "动物朋友", "和小动物一起练习", [], ["cat", "dog", "fish", "bird", "horse", "rabbit"]],
   ["words", "颜色星球", "用颜色单词点亮星球", [], ["red", "blue", "green", "yellow", "orange", "pink"]],
   ["words", "数字小队", "认识简单的英文数字", [], ["one", "two", "three", "four", "five", "six"]],
-  ["words", "我的小故事", "把喜欢的词语连起来", [], ["I", "like", "my", "big", "red", "ball"]],
+  ["words", "我的小故事", "把喜欢的词语连起来", [], ["i", "like", "my", "big", "red", "ball"]],
   ["words", "词语加速", "准确地跑完单词赛道", [], ["play", "read", "draw", "jump", "sing", "learn"]],
   ["words", "短词挑战", "短词也要稳稳输入", [], ["look", "book", "fish", "ship", "tree", "blue"]],
-  ["space", "空格桥", "空格是单词之间的桥", ["space"], ["I like", "my cat", "red ball", "big dog"]],
+  ["space", "空格桥", "空格是单词之间的桥", ["space"], ["we like", "my cat", "red ball", "big dog"]],
   ["shift", "大写能量", "按住 Shift 点亮大写字母", ["shift"], ["I Am", "My Dog", "Big Sun", "We Play"]],
   ["punctuation", "句号站", "一句话要在句号停下", ["."], ["I am happy.", "We can play.", "My cat is big."]],
   ["punctuation", "逗号风筝", "逗号让词语排排队", [","], ["red, blue", "one, two", "I run, I jump."]],
-  ["punctuation", "问号月亮", "学会向朋友提问", ["?"], ["Are you ok?", "Do you play?", "Is it big?"]],
-  ["punctuation", "感叹星", "用感叹号表达开心", ["!"], ["Wow!", "Great job!", "I can type!"]],
-  ["numbers", "数字 1 2", "数字火箭开始倒数", ["1", "2"], ["1 star", "2 cats", "1, 2, go!"]],
+  ["punctuation", "问号月亮", "学会向朋友提问", ["/"], ["Are you ok?", "Do you play?", "Is it big?"]],
+  ["punctuation", "感叹星", "用感叹号表达开心", ["1"], ["Wow!", "Great job!", "I can type!"]],
+  ["numbers", "数字 1 2", "数字火箭开始倒数", ["2"], ["1 star", "2 cats", "1, 2, go!"]],
   ["sentences", "小句子起飞", "让短句像火箭一样起飞", [], ["I can type.", "I like my cat.", "We play and learn."]],
   ["sentences", "故事接龙", "把几个短句接成小故事", [], ["The sun is up.", "My dog can run.", "We have fun."]],
   ["sentences", "准确小队", "慢一点也没关系，准确最棒", [], ["I keep my hands home.", "Every key is a star.", "I try again."]],
@@ -98,6 +98,8 @@ export function getPromptKeys(prompt) {
   for (const character of String(prompt)) {
     if (character === " ") keys.push("space");
     else if (/[A-Z]/.test(character)) keys.push("shift", character.toLowerCase());
+    else if (character === "?") keys.push("shift", "/");
+    else if (character === "!") keys.push("shift", "1");
     else if (character.length === 1) keys.push(character.toLowerCase());
   }
   return unique(keys);
@@ -122,12 +124,15 @@ function createLesson(spec, dayNumber, activeKeys, newKeys) {
 
 let unlocked = [];
 export const COURSE = Object.freeze(LESSON_SPECS.map((spec, index) => {
-  const declaredNewKeys = spec[3];
+  const declaredNewKeys = unique(spec[3]);
+  const activeKeys = unique([...unlocked, ...declaredNewKeys]);
   const requiredKeys = unique(spec[4].flatMap(getPromptKeys));
-  const inferredNewKeys = requiredKeys.filter((key) => !unlocked.includes(key));
-  const newKeys = unique([...declaredNewKeys, ...inferredNewKeys]);
-  unlocked = unique([...unlocked, ...newKeys]);
-  return createLesson(spec, index + 1, unlocked, newKeys);
+  const missingKeys = requiredKeys.filter((key) => !activeKeys.includes(key));
+  if (missingKeys.length > 0) {
+    throw new Error(`Day ${index + 1} prompts require undeclared keys: ${missingKeys.join(", ")}`);
+  }
+  unlocked = activeKeys;
+  return createLesson(spec, index + 1, unlocked, declaredNewKeys);
 }));
 
 export function createProfile() {
@@ -160,6 +165,8 @@ export function normalizeKey(key) {
   if (key === " ") return "space";
   if (typeof key !== "string") return "";
   if (key === "Shift") return "shift";
+  if (key === "?") return "/";
+  if (key === "!") return "1";
   if (key.length !== 1) return "";
   return key.toLowerCase();
 }
@@ -201,7 +208,7 @@ export function getActivity(index = 0) {
 
 export function getActivityForPrompt(completedPrompts = 0) {
   const safePrompts = Number.isFinite(Number(completedPrompts)) ? Math.max(0, Math.floor(Number(completedPrompts))) : 0;
-  return getActivity(Math.floor(safePrompts / 3));
+  return getActivity(Math.floor(safePrompts / 2));
 }
 
 function promptIncludesKey(prompt, key) {
@@ -220,6 +227,7 @@ export function choosePrompt(lesson, profile, offset = 0) {
 }
 
 export function completeSession(profile, result = {}) {
+  if (result.completed !== true) return profile;
   const plan = getDailyPlan(profile);
   const accuracy = Math.min(1, Math.max(0, Number(result.accuracy) || 0));
   const elapsedSeconds = Math.min(SESSION_SECONDS, Math.max(0, Number(result.elapsedSeconds) || 0));
