@@ -1,4 +1,12 @@
-import { COURSE_DAYS, DIFFICULTIES, SESSIONS_PER_DAY, createProfile } from "./engine.js";
+import {
+  COURSE_DAYS,
+  DIFFICULTIES,
+  HISTORY_LIMIT,
+  MAX_SESSION_SECONDS,
+  SESSION_PLANS,
+  SESSIONS_PER_DAY,
+  createProfile,
+} from "./engine.js";
 import { normalizeAudioSettings } from "./audio.js";
 
 export const STORAGE_KEY = "typing-adventure:profile";
@@ -23,14 +31,18 @@ function sanitizeKeyStats(stats) {
 
 function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
-  return history.slice(-MAX_SESSIONS).flatMap((entry) => {
+  return history.slice(-HISTORY_LIMIT).flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
+    const totalStages = finiteInteger(entry.totalStages, 0, 12);
     return [{
       dayNumber: finiteInteger(entry.dayNumber, 1, COURSE_DAYS) || 1,
       sessionNumber: finiteInteger(entry.sessionNumber, 1, SESSIONS_PER_DAY) || 1,
       accuracy: Math.min(1, Math.max(0, Number(entry.accuracy) || 0)),
-      elapsedSeconds: Math.min(20 * 60, Math.max(0, Number(entry.elapsedSeconds) || 0)),
+      elapsedSeconds: Math.min(MAX_SESSION_SECONDS, Math.max(0, Number(entry.elapsedSeconds) || 0)),
       completedAt: typeof entry.completedAt === "string" ? entry.completedAt.slice(0, 40) : null,
+      completedStages: finiteInteger(entry.completedStages, 0, totalStages || 12),
+      totalStages,
+      counted: entry.counted === undefined ? true : entry.counted === true,
     }];
   });
 }
@@ -39,12 +51,14 @@ export function sanitizeProfile(value) {
   const profile = createProfile();
   if (!value || typeof value !== "object" || Array.isArray(value)) return profile;
   const difficultyId = Object.hasOwn(DIFFICULTIES, value.difficultyId) ? value.difficultyId : profile.difficultyId;
+  const sessionPlanId = Object.hasOwn(SESSION_PLANS, value.sessionPlanId) ? value.sessionPlanId : profile.sessionPlanId;
   return {
     ...profile,
     version: 1,
     completedSessions: finiteInteger(value.completedSessions, 0, MAX_SESSIONS),
-    totalSeconds: Math.min(MAX_SESSIONS * 20 * 60, Math.max(0, Number(value.totalSeconds) || 0)),
+    totalSeconds: Math.min(MAX_SESSIONS * MAX_SESSION_SECONDS, Math.max(0, Number(value.totalSeconds) || 0)),
     difficultyId,
+    sessionPlanId,
     audio: normalizeAudioSettings(value.audio),
     keyStats: sanitizeKeyStats(value.keyStats),
     history: sanitizeHistory(value.history),
