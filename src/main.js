@@ -1,11 +1,14 @@
 import {
   DIFFICULTIES,
-  SESSION_SECONDS,
+  MAX_SESSION_SECONDS,
+  REST_SECONDS,
+  SESSION_PLANS,
+  buildStagePlan,
   choosePrompt,
   completeSession,
   getDailyPlan,
-  getActivityForPrompt,
   getLesson,
+  isCountedSession,
   normalizeKey,
   recordKey,
 } from "./engine.js";
@@ -48,12 +51,22 @@ function focusCapture() {
   document.querySelector("#keyboard-capture")?.focus();
 }
 
+function currentStage() {
+  return run?.stages[run.stageIndex];
+}
+
 function isBalloonActivity() {
   return run?.activity.id === "balloon-defense";
 }
 
+function nextPrompt() {
+  const stage = currentStage();
+  if (stage.type === "warmup") return stage.prompts[run.stageProgress % stage.prompts.length];
+  return choosePrompt(run.lesson, profile, run.promptIndex);
+}
+
 function startBalloonMode() {
-  if (!run || !isBalloonActivity()) return;
+  if (!run || !isBalloonActivity() || run.resting || run.paused) return;
   const keys = run.lesson.activeKeys.filter((key) => /^[a-z]$/.test(key));
   run.balloonRound = createBalloonRound(keys);
   balloonLastFrame = performance.now();
@@ -69,7 +82,7 @@ function stopBalloonMode() {
 }
 
 function balloonFrame(now) {
-  if (!run || screen !== "practice" || run.paused || !isBalloonActivity()) {
+  if (!run || screen !== "practice" || run.paused || run.resting || !isBalloonActivity()) {
     balloonFrameHandle = null;
     return;
   }
@@ -85,15 +98,9 @@ function updateBalloonView() {
   if (arena && run?.balloonRound) arena.innerHTML = renderBalloonArena(run.balloonRound);
 }
 
-function setActivity(nextActivity) {
-  if (!run || run.activity.id === nextActivity.id) return;
-  const wasBalloon = isBalloonActivity();
-  run.activity = nextActivity;
-  if (nextActivity.id === "balloon-defense") startBalloonMode();
-  else if (wasBalloon) stopBalloonMode();
-}
-
 function createRun(plan, { countsTowardProgress = true } = {}) {
+  const sessionPlanId = Object.hasOwn(SESSION_PLANS, profile.sessionPlanId) ? profile.sessionPlanId : "standard";
+  const stages = buildStagePlan(plan.lesson, sessionPlanId, profile);
   return {
     plan,
     originalPlan: {
@@ -103,21 +110,27 @@ function createRun(plan, { countsTowardProgress = true } = {}) {
     countsTowardProgress,
     lesson: plan.lesson,
     difficultyId: profile.difficultyId,
-    prompt: choosePrompt(plan.lesson, profile, 0),
+    sessionPlanId,
+    stages,
+    stageIndex: 0,
+    stageProgress: 0,
+    completedStages: 0,
+    resting: false,
+    restRemaining: 0,
+    activity: stages[0].activity,
+    prompt: stages[0].prompts[0],
     promptIndex: 0,
-    activity: getActivityForPrompt(0),
-    completedPrompts: 0,
     typed: "",
     correct: 0,
     errors: 0,
     total: 0,
     streak: 0,
     score: 0,
-    remainingSeconds: SESSION_SECONDS,
+    elapsedSeconds: 0,
     lastFeedback: "ready",
-    feedbackText: "星语已经准备好",
+    feedbackText: "先热热身，唤醒小手",
     lastPressed: "",
-    announcement: `${plan.lesson.title}，第 ${plan.sessionNumber} 次练习开始`,
+    announcement: `${plan.lesson.title}，第 ${plan.sessionNumber} 次练习开始，先热身`,
     paused: false,
   };
 }
@@ -133,22 +146,33 @@ function startPractice(planOverride = null, options = {}) {
   render();
   focusCapture();
   sound.station();
-  sound.speak(`第 ${plan.dayNumber} 天，${plan.lesson.title}`);
+  sound.speak(`第 ${plan.dayNumber} 天，${plan.lesson.title}，先热身`);
   saveDraft();
   timerHandle = window.setInterval(tick, 1000);
 }
 
 function tick() {
   if (!run || run.paused || screen !== "practice") return;
-  run.remainingSeconds = Math.max(0, run.remainingSeconds - 1);
+  if (run.resting) {
+    run.restRemaining = Math.max(0, run.restRemaining - 1);
+    setText("#rest-countdown", String(run.restRemaining));
+    if (run.restRemaining <= 0) {
+      endRest();
+      return;
+    }
+    saveDraft();
+    return;
+  }
+  run.elapsedSeconds += 1;
   const timer = document.querySelector("#timer-value");
-  if (timer) timer.textContent = formatTime(run.remainingSeconds);
+  if (timer) timer.textContent = formatTime(run.elapsedSeconds);
   saveDraft();
-  if (run.remainingSeconds <= 0) finishPractice({ allowEmpty: true });
+  if (run.elapsedSeconds >= MAX_SESSION_SECONDS) finishPractice({ allowEmpty: true });
 }
 
 function updatePracticeView() {
   if (!run || screen !== "practice") return;
+  const stage = currentStage();
   const expected = run.prompt[run.typed.length] ?? "";
   const balloonActive = isBalloonActivity();
   const accuracy = run.total === 0 ? "--" : `${Math.round((run.correct / run.total) * 100)}%`;
@@ -165,24 +189,29 @@ function updatePracticeView() {
   setText("#streak-value", `${run.streak} 次`);
   setText("#score-value", String(run.score));
   setText("#target-chip", balloonActive ? "发射" : normalizeKey(expected) === "space" ? "space" : expected || "完成");
-  setText("#keyboard-note", balloonActive ? "按字母键发射能量弹" : DIFFICULTIES[run.difficultyId].hints ? "目标键会亮起来" : "跟着目标，自己寻找");
+  setText("#keyboard-note", balloonActive
+    ? "按字母键发射能量弹"
+    : stage.type === "warmup"
+      ? "热身：跟着亮起来的键就好"
+      : DIFFICULTIES[run.difficultyId].hints ? "目标键会亮起来" : "跟着目标，自己寻找");
   setText("#feedback-line", run.feedbackText);
   const activityBanner = document.querySelector("#activity-banner");
   if (activityBanner) activityBanner.className = `activity-banner activity-banner--${run.activity.id}`;
   setText("#activity-icon", run.activity.icon);
   setText("#activity-title", run.activity.title);
   setText("#activity-hint", run.activity.hint);
-  setText("#activity-count", `第 ${run.completedPrompts + 1} 站`);
+  setText("#activity-count", `本关 ${run.stageProgress} / ${stage.target}`);
+  setText("#stage-pill", `第 ${run.stageIndex + 1} / ${run.stages.length} 关`);
   const feedback = document.querySelector("#feedback-line");
   if (feedback) feedback.className = `feedback-line feedback-line--${run.lastFeedback}`;
   const finish = document.querySelector('[data-action="finish"]');
   if (finish) finish.disabled = run.total === 0;
   const fill = document.querySelector("#track-fill");
   const planet = document.querySelector("#track-planet");
-  setText("#track-label", `${run.completedPrompts} / 6 小站`);
-  const percent = Math.min(100, (run.completedPrompts / 6) * 100);
-  if (fill) fill.style.width = `${percent}%`;
-  if (planet) planet.style.left = `${Math.min(94, 4 + (run.completedPrompts / 6) * 90)}%`;
+  const fraction = Math.min(1, (run.completedStages + Math.min(1, run.stageProgress / stage.target)) / run.stages.length);
+  setText("#track-label", `${run.completedStages} / ${run.stages.length} 关`);
+  if (fill) fill.style.width = `${fraction * 100}%`;
+  if (planet) planet.style.left = `${Math.min(94, 4 + fraction * 90)}%`;
   setText("#screen-announcer", run.announcement);
   run.lastPressed = "";
   saveDraft();
@@ -194,7 +223,7 @@ function setText(selector, text) {
 }
 
 function acceptKey(event) {
-  if (!run || screen !== "practice" || run.paused) return;
+  if (!run || screen !== "practice" || run.paused || run.resting) return;
   if (isBalloonActivity()) {
     handleBalloonInput(event);
     return;
@@ -220,27 +249,90 @@ function acceptKey(event) {
     run.score += 10 + Math.min(20, run.streak);
     run.lastFeedback = "correct";
     run.feedbackText = run.streak >= 5 ? "连成一条星河！" : "漂亮！继续前进";
+    run.announcement = "正确";
     if (run.typed.length >= run.prompt.length) {
-      run.completedPrompts += 1;
-      run.promptIndex += 1;
-      setActivity(getActivityForPrompt(run.completedPrompts));
-      run.prompt = choosePrompt(run.lesson, profile, run.promptIndex);
-      run.typed = "";
-      run.feedbackText = run.completedPrompts % 4 === 0 ? "小站到站，伸伸小手再出发" : "小站通过，下一种玩法在前面";
-      run.announcement = `${run.activity.title}，${run.activity.hint}`;
-      sound.station();
-      if (run.completedPrompts % 4 === 0) sound.speak("小站到站，伸伸小手再出发");
-      else if (run.completedPrompts % 3 === 0) sound.speak(`${run.activity.title}，${run.activity.hint}`);
+      finishPrompt();
+      return;
     }
   } else {
     sound.wrong();
     run.errors += 1;
-    run.streak = 0;
+    if (currentStage().type !== "warmup") run.streak = 0;
     run.lastFeedback = "wrong";
     run.feedbackText = `再找找：${expected === " " ? "space" : expected}`;
+    run.announcement = "再试一次";
   }
-  run.announcement = run.lastFeedback === "correct" ? "正确" : "再试一次";
   updatePracticeView();
+}
+
+function finishPrompt() {
+  run.stageProgress += 1;
+  run.promptIndex += 1;
+  run.typed = "";
+  if (run.stageProgress >= currentStage().target) {
+    completeStage();
+    return;
+  }
+  run.prompt = nextPrompt();
+  run.feedbackText = "星语通过，下一条来了";
+  run.announcement = "星语通过";
+  sound.station();
+  updatePracticeView();
+}
+
+function completeStage() {
+  const finishedStage = currentStage();
+  run.completedStages += 1;
+  run.stageProgress = 0;
+  run.typed = "";
+  if (finishedStage.type === "balloon") stopBalloonMode();
+  if (run.completedStages >= run.stages.length) {
+    finishPractice({ allowEmpty: true });
+    return;
+  }
+  run.stageIndex += 1;
+  const stage = currentStage();
+  run.activity = stage.activity;
+  run.prompt = nextPrompt();
+  run.lastFeedback = "correct";
+  sound.complete();
+  if (run.completedStages % 2 === 0) {
+    startRest();
+    return;
+  }
+  run.feedbackText = `小关完成！下一关：${stage.activity.title}`;
+  run.announcement = `第 ${run.completedStages} 关完成，进入${stage.activity.title}`;
+  sound.speak(`${stage.activity.title}，${stage.activity.hint}`);
+  render();
+  focusCapture();
+  if (isBalloonActivity()) startBalloonMode();
+  saveDraft();
+}
+
+function startRest() {
+  run.resting = true;
+  run.restRemaining = REST_SECONDS;
+  run.feedbackText = "小关完成！休息一下";
+  run.announcement = `第 ${run.completedStages} 关完成，休息 ${REST_SECONDS} 秒`;
+  sound.speak("伸伸小手，休息一下");
+  render();
+  document.querySelector('[data-action="skip-rest"]')?.focus();
+  saveDraft();
+}
+
+function endRest() {
+  if (!run || !run.resting) return;
+  run.resting = false;
+  run.restRemaining = 0;
+  const stage = currentStage();
+  run.feedbackText = `继续出发！这一关：${stage.activity.title}`;
+  run.announcement = `休息结束，进入${stage.activity.title}`;
+  sound.station();
+  sound.speak(`${stage.activity.title}，${stage.activity.hint}`);
+  render();
+  focusCapture();
+  if (isBalloonActivity()) startBalloonMode();
+  saveDraft();
 }
 
 function handleBalloonInput(event) {
@@ -254,21 +346,19 @@ function handleBalloonInput(event) {
   profile = recordKey(profile, key, result.shot);
   if (result.shot) {
     run.balloonRound = result.round;
-    run.completedPrompts += 1;
-    run.promptIndex += 1;
-    run.prompt = choosePrompt(run.lesson, profile, run.promptIndex);
     run.correct += 1;
     run.streak += 1;
     run.score += 15;
     run.lastFeedback = "correct";
     run.feedbackText = "命中！气球爆开了";
-    setActivity(getActivityForPrompt(run.completedPrompts));
+    run.announcement = "命中气球";
     sound.launch();
     sound.explode();
-    sound.station();
-    if (run.completedPrompts % 4 === 0) sound.speak("小站到站，伸伸小手再出发");
-    else if (run.completedPrompts % 3 === 0) sound.speak(`${run.activity.title}，${run.activity.hint}`);
-    run.announcement = "命中气球";
+    run.stageProgress += 1;
+    if (run.stageProgress >= currentStage().target) {
+      completeStage();
+      return;
+    }
   } else {
     run.errors += 1;
     run.streak = 0;
@@ -281,7 +371,7 @@ function handleBalloonInput(event) {
 }
 
 function pausePractice() {
-  if (!run || screen !== "practice" || run.paused) return;
+  if (!run || screen !== "practice" || run.paused || run.resting) return;
   run.paused = true;
   stopBalloonMode();
   run.announcement = "练习已暂停";
@@ -303,30 +393,45 @@ function resumePractice() {
   saveDraft();
 }
 
+function recordRunToProfile() {
+  profile = completeSession(profile, {
+    accuracy: run.total === 0 ? 0 : run.correct / run.total,
+    elapsedSeconds: run.elapsedSeconds,
+    completedAt: new Date().toISOString(),
+    completedStages: run.completedStages,
+    totalStages: run.stages.length,
+  });
+  saveProfile(profile);
+}
+
 function finishPractice({ allowEmpty = false } = {}) {
   if (!run || screen !== "practice" || (!allowEmpty && run.total === 0)) return;
   clearTimer();
   stopBalloonMode();
   clearDraft();
   const accuracy = run.total === 0 ? 0 : run.correct / run.total;
-  if (run.countsTowardProgress) {
-    profile = completeSession(profile, {
-      accuracy,
-      elapsedSeconds: SESSION_SECONDS - run.remainingSeconds,
-      completedAt: new Date().toISOString(),
-    });
-    saveProfile(profile);
-  }
+  const totalStages = run.stages.length;
+  const counted = run.total > 0 && isCountedSession(run.completedStages, totalStages);
+  if (run.countsTowardProgress && run.total > 0) recordRunToProfile();
   sound.complete();
-  sound.speak(run.total === 0 ? "本次还没有输入，可以重新开始" : accuracy >= 0.92 ? "漂亮的降落" : "探险完成");
+  sound.speak(run.total === 0
+    ? "本次还没有输入，可以重新开始"
+    : counted
+      ? accuracy >= 0.92 ? "漂亮的降落" : "探险完成"
+      : "热身完成，下次接着飞");
   run.result = {
     accuracy,
     score: run.score,
     correct: run.correct,
     errors: run.errors,
     empty: run.total === 0,
+    counted,
+    completedStages: run.completedStages,
+    totalStages,
+    elapsedSeconds: run.elapsedSeconds,
     originalPlan: run.originalPlan,
   };
+  run.resting = false;
   screen = "result";
   render();
   document.querySelector('[data-action="continue"]')?.focus();
@@ -353,16 +458,20 @@ function clearTimer() {
 }
 
 function hasMeaningfulProgress() {
-  return Boolean(run && (run.total > 0 || run.remainingSeconds < SESSION_SECONDS - 10));
+  return Boolean(run && (run.total > 0 || run.elapsedSeconds > 10));
 }
 
 function goHome({ force = false } = {}) {
   if (!force && screen === "practice" && hasMeaningfulProgress()) {
-    const shouldLeave = window.confirm("本次探险还没有完成。确定退出并放弃当前进度吗？");
-    if (!shouldLeave) {
+    const willRecord = run.countsTowardProgress && run.total > 0;
+    const message = willRecord
+      ? "要提前结束这次探险吗？已完成的小关和练习时间会被记录。"
+      : "本次探险还没有完成。确定退出并放弃当前进度吗？";
+    if (!window.confirm(message)) {
       focusCapture();
       return;
     }
+    if (willRecord) recordRunToProfile();
   }
   clearTimer();
   stopBalloonMode();
@@ -378,6 +487,14 @@ function updateDifficulty(id) {
   saveProfile(profile);
   render();
   document.querySelector(`[data-difficulty="${id}"]`)?.focus();
+}
+
+function updateSessionPlan(id) {
+  if (!Object.hasOwn(SESSION_PLANS, id)) return;
+  profile = { ...profile, sessionPlanId: id };
+  saveProfile(profile);
+  render();
+  document.querySelector(`[data-plan="${id}"]`)?.focus();
 }
 
 function toggleAudioSetting(setting) {
@@ -400,27 +517,28 @@ function saveDraft() {
   if (!run || screen !== "practice") return;
   try {
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
-      version: 1,
+      version: 2,
       savedAt: Date.now(),
       plan: run.originalPlan,
       countsTowardProgress: run.countsTowardProgress,
       state: {
         difficultyId: run.difficultyId,
+        sessionPlanId: run.sessionPlanId,
+        stageIndex: run.stageIndex,
+        stageProgress: run.stageProgress,
+        completedStages: run.completedStages,
         prompt: run.prompt,
         promptIndex: run.promptIndex,
-        activityIndex: run.completedPrompts,
-        completedPrompts: run.completedPrompts,
         typed: run.typed,
         correct: run.correct,
         errors: run.errors,
         total: run.total,
         streak: run.streak,
         score: run.score,
-        remainingSeconds: run.remainingSeconds,
+        elapsedSeconds: run.elapsedSeconds,
         lastFeedback: run.lastFeedback,
         feedbackText: run.feedbackText,
         announcement: run.announcement,
-        paused: true,
       },
     }));
   } catch {
@@ -444,7 +562,7 @@ function restoreDraft() {
     clearDraft();
     return false;
   }
-  if (!draft || draft.version !== 1 || Date.now() - Number(draft.savedAt) > DRAFT_MAX_AGE_MS) {
+  if (!draft || draft.version !== 2 || Date.now() - Number(draft.savedAt) > DRAFT_MAX_AGE_MS) {
     clearDraft();
     return false;
   }
@@ -456,24 +574,44 @@ function restoreDraft() {
   }
   const lesson = getLesson(dayNumber);
   const plan = { dayNumber, sessionNumber, totalSessions: 84, lesson };
-  const baseRun = createRun(plan, { countsTowardProgress: Boolean(draft.countsTowardProgress) });
   const state = draft.state ?? {};
+  const sessionPlanId = Object.hasOwn(SESSION_PLANS, state.sessionPlanId) ? state.sessionPlanId : profile.sessionPlanId;
+  const stages = buildStagePlan(lesson, sessionPlanId, profile);
+  const stageIndex = Math.min(stages.length - 1, Math.max(0, Math.floor(Number(state.stageIndex) || 0)));
+  const stage = stages[stageIndex];
+  const stageProgress = Math.min(stage.target - 1, Math.max(0, Math.floor(Number(state.stageProgress) || 0)));
+  const completedStages = Math.min(stageIndex, Math.max(0, Math.floor(Number(state.completedStages) || 0)));
+  const fallbackPrompt = stage.type === "warmup"
+    ? stage.prompts[stageProgress % stage.prompts.length]
+    : choosePrompt(lesson, profile, Math.max(0, Number(state.promptIndex) || 0));
+  const prompt = typeof state.prompt === "string" && state.prompt ? state.prompt : fallbackPrompt;
+  const typed = typeof state.typed === "string" && state.typed.length < prompt.length ? state.typed : "";
   run = {
-    ...baseRun,
-    difficultyId: Object.hasOwn(DIFFICULTIES, state.difficultyId) ? state.difficultyId : baseRun.difficultyId,
-    prompt: typeof state.prompt === "string" && state.prompt ? state.prompt : baseRun.prompt,
+    plan,
+    originalPlan: { dayNumber, sessionNumber },
+    countsTowardProgress: Boolean(draft.countsTowardProgress),
+    lesson,
+    difficultyId: Object.hasOwn(DIFFICULTIES, state.difficultyId) ? state.difficultyId : profile.difficultyId,
+    sessionPlanId,
+    stages,
+    stageIndex,
+    stageProgress,
+    completedStages,
+    resting: false,
+    restRemaining: 0,
+    activity: stage.activity,
+    prompt,
     promptIndex: Math.max(0, Number(state.promptIndex) || 0),
-    activity: getActivityForPrompt(Math.max(0, Number(state.activityIndex) || 0)),
-    completedPrompts: Math.max(0, Number(state.completedPrompts) || 0),
-    typed: typeof state.typed === "string" ? state.typed : "",
+    typed,
     correct: Math.max(0, Number(state.correct) || 0),
     errors: Math.max(0, Number(state.errors) || 0),
     total: Math.max(0, Number(state.total) || 0),
     streak: Math.max(0, Number(state.streak) || 0),
     score: Math.max(0, Number(state.score) || 0),
-    remainingSeconds: Math.min(SESSION_SECONDS, Math.max(0, Number(state.remainingSeconds) || SESSION_SECONDS)),
+    elapsedSeconds: Math.min(MAX_SESSION_SECONDS, Math.max(0, Number(state.elapsedSeconds) || 0)),
     lastFeedback: typeof state.lastFeedback === "string" ? state.lastFeedback : "ready",
     feedbackText: typeof state.feedbackText === "string" ? state.feedbackText : "星语继续前进",
+    lastPressed: "",
     announcement: typeof state.announcement === "string" ? state.announcement : "继续未完成的探险",
     paused: false,
   };
@@ -492,18 +630,20 @@ app.addEventListener("click", (event) => {
   if (action === "start") startPractice();
   if (action === "pause") pausePractice();
   if (action === "resume") resumePractice();
+  if (action === "skip-rest") endRest();
   if (action === "finish") finishPractice();
   if (action === "home") goHome();
   if (action === "retry") retryCompletedSession();
   if (action === "continue") continueToNextSession();
   if (action === "difficulty") updateDifficulty(event.target.closest("[data-difficulty]").dataset.difficulty);
+  if (action === "session-plan") updateSessionPlan(event.target.closest("[data-plan]").dataset.plan);
   if (action === "toggle-effects") toggleAudioSetting("effectsEnabled");
   if (action === "toggle-voice") toggleAudioSetting("voiceEnabled");
 });
 
 window.addEventListener("keydown", acceptKey);
 window.addEventListener("visibilitychange", () => {
-  if (document.hidden && screen === "practice" && run && !run.paused) pausePractice();
+  if (document.hidden && screen === "practice" && run && !run.paused && !run.resting) pausePractice();
 });
 window.addEventListener("beforeunload", (event) => {
   if (screen === "practice" && hasMeaningfulProgress()) {

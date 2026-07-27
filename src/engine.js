@@ -1,6 +1,14 @@
-export const SESSION_SECONDS = 20 * 60;
 export const COURSE_DAYS = 42;
 export const SESSIONS_PER_DAY = 2;
+export const MAX_SESSION_SECONDS = 60 * 60;
+export const REST_SECONDS = 30;
+export const HISTORY_LIMIT = 120;
+
+export const SESSION_PLANS = Object.freeze({
+  short: Object.freeze({ id: "short", name: "轻量飞行", minutes: 10, stages: 3 }),
+  standard: Object.freeze({ id: "standard", name: "标准飞行", minutes: 15, stages: 4 }),
+  full: Object.freeze({ id: "full", name: "完整飞行", minutes: 20, stages: 6 }),
+});
 
 export const DIFFICULTIES = Object.freeze({
   gentle: Object.freeze({
@@ -39,6 +47,15 @@ export const ACTIVITIES = Object.freeze([
   Object.freeze({ id: "code-lock", title: "密码门", icon: "⌁", hint: "按对密码，门就打开" }),
   Object.freeze({ id: "rocket-dash", title: "火箭冲刺", icon: "↗", hint: "准确地冲过这一小站" }),
 ]);
+
+export const WARMUP_ACTIVITY = Object.freeze({
+  id: "warmup",
+  title: "热身站",
+  icon: "☼",
+  hint: "轻轻唤醒小手，找到今天的键",
+});
+
+export const STAGE_TARGETS = Object.freeze({ warmup: 3, typing: 3, balloon: 8 });
 
 const HOME_ROW = ["a", "s", "d", "f", "j", "k", "l", ";"];
 const TOP_ROW = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
@@ -115,8 +132,6 @@ function createLesson(spec, dayNumber, activeKeys, newKeys) {
     newKeys: Object.freeze([...newKeys]),
     activeKeys: Object.freeze([...activeKeys]),
     prompts: Object.freeze([...prompts]),
-    warmupMinutes: 5,
-    missionMinutes: 15,
   });
 }
 
@@ -136,6 +151,7 @@ export function createProfile() {
     completedSessions: 0,
     totalSeconds: 0,
     difficultyId: "gentle",
+    sessionPlanId: "standard",
     audio: { effectsEnabled: true, voiceEnabled: false, volume: 0.6 },
     keyStats: {},
     history: [],
@@ -199,9 +215,45 @@ export function getActivity(index = 0) {
   return ACTIVITIES[Math.abs(safeIndex) % ACTIVITIES.length];
 }
 
-export function getActivityForPrompt(completedPrompts = 0) {
-  const safePrompts = Number.isFinite(Number(completedPrompts)) ? Math.max(0, Math.floor(Number(completedPrompts))) : 0;
-  return getActivity(Math.floor(safePrompts / 3));
+export function getSessionPlan(planId) {
+  return SESSION_PLANS[planId] ?? SESSION_PLANS.standard;
+}
+
+export function buildWarmupPrompts(lesson, profile) {
+  let keys = lesson.newKeys.filter((key) => key.length === 1);
+  if (keys.length === 0) {
+    const letters = lesson.activeKeys.filter((key) => /^[a-z]$/.test(key));
+    keys = [...letters].sort((a, b) => getMastery(profile, a) - getMastery(profile, b)).slice(0, 2);
+  }
+  if (keys.length === 0) keys = ["f", "j"];
+  const [first, second = first] = keys;
+  return [`${first}${first}${first}`, `${second}${second}${second}`, `${first}${second}${first}${second}`];
+}
+
+export function buildStagePlan(lesson, planId, profile) {
+  const plan = getSessionPlan(planId);
+  const stages = [{
+    type: "warmup",
+    activity: WARMUP_ACTIVITY,
+    target: STAGE_TARGETS.warmup,
+    prompts: buildWarmupPrompts(lesson, profile),
+  }];
+  for (let index = 1; index < plan.stages; index += 1) {
+    const activity = getActivity(index - 1);
+    const isBalloon = activity.id === "balloon-defense";
+    stages.push({
+      type: isBalloon ? "balloon" : "typing",
+      activity,
+      target: isBalloon ? STAGE_TARGETS.balloon : STAGE_TARGETS.typing,
+    });
+  }
+  return stages;
+}
+
+export function isCountedSession(completedStages, totalStages) {
+  const total = Math.max(1, Math.floor(Number(totalStages) || 0));
+  const completed = Math.max(0, Math.floor(Number(completedStages) || 0));
+  return completed >= Math.ceil(total / 2);
 }
 
 function promptIncludesKey(prompt, key) {
@@ -222,19 +274,27 @@ export function choosePrompt(lesson, profile, offset = 0) {
 export function completeSession(profile, result = {}) {
   const plan = getDailyPlan(profile);
   const accuracy = Math.min(1, Math.max(0, Number(result.accuracy) || 0));
-  const elapsedSeconds = Math.min(SESSION_SECONDS, Math.max(0, Number(result.elapsedSeconds) || 0));
+  const elapsedSeconds = Math.min(MAX_SESSION_SECONDS, Math.max(0, Number(result.elapsedSeconds) || 0));
+  const totalStages = Math.min(12, Math.max(1, Math.floor(Number(result.totalStages) || 1)));
+  const completedStages = Math.min(totalStages, Math.max(0, Math.floor(Number(result.completedStages) || 0)));
+  const counted = isCountedSession(completedStages, totalStages);
   const historyEntry = {
     dayNumber: plan.dayNumber,
     sessionNumber: plan.sessionNumber,
     accuracy,
     elapsedSeconds,
     completedAt: result.completedAt ?? null,
+    completedStages,
+    totalStages,
+    counted,
   };
   return {
     ...profile,
-    completedSessions: Math.min(COURSE_DAYS * SESSIONS_PER_DAY, profile.completedSessions + 1),
+    completedSessions: counted
+      ? Math.min(COURSE_DAYS * SESSIONS_PER_DAY, profile.completedSessions + 1)
+      : profile.completedSessions,
     totalSeconds: profile.totalSeconds + elapsedSeconds,
-    history: [...profile.history, historyEntry].slice(-84),
+    history: [...profile.history, historyEntry].slice(-HISTORY_LIMIT),
   };
 }
 

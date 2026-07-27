@@ -725,6 +725,57 @@ strong {
   font-weight: 900;
 }
 
+.plan-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.plan-heading h3 {
+  font-size: 1.1rem;
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.plan-choice {
+  display: grid;
+  gap: 3px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: transparent;
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.plan-choice:hover {
+  border-color: var(--ink);
+  transform: translateY(-2px);
+}
+
+.plan-choice.is-selected {
+  border-color: var(--ink);
+  background: var(--paper-bright);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.plan-choice strong {
+  font-size: 0.95rem;
+}
+
+.plan-choice small {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
 .site-footer {
   padding-block: 22px 30px;
   border-top: 1px solid var(--line);
@@ -784,6 +835,16 @@ strong {
   font-size: 0.85rem;
   font-weight: 900;
   text-align: center;
+}
+
+.stage-pill {
+  padding: 7px 10px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  background: var(--sun);
+  font-size: 0.85rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .practice-layout {
@@ -848,6 +909,10 @@ strong {
   padding: 10px 12px;
   background: var(--paper-bright);
   transition: background 180ms ease;
+}
+
+.activity-banner--warmup {
+  background: #ece7fa;
 }
 
 .activity-banner--star-scout {
@@ -1673,6 +1738,30 @@ strong {
   font-size: 0.88rem;
 }
 
+.rest-dialog .pause-orbit {
+  background: var(--mint);
+}
+
+.rest-countdown {
+  display: grid;
+  gap: 2px;
+  margin-top: 14px;
+  justify-items: center;
+}
+
+.rest-countdown strong {
+  color: var(--mint-dark);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 2.2rem;
+  line-height: 1.1;
+}
+
+.rest-countdown span {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .dialog-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1777,8 +1866,8 @@ strong {
 
 .result-score-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(90px, 1fr));
-  width: min(430px, 100%);
+  grid-template-columns: repeat(4, minmax(80px, 1fr));
+  width: min(520px, 100%);
   margin-top: 28px;
   border-top: 1px solid var(--white-line);
   border-bottom: 1px solid var(--white-line);
@@ -2036,7 +2125,8 @@ strong {
     font-size: 0.65rem;
   }
 
-  .difficulty-grid {
+  .difficulty-grid,
+  .plan-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2168,7 +2258,16 @@ strong {
   }
 
   .result-score-grid {
+    grid-template-columns: repeat(2, 1fr);
     margin-top: 22px;
+  }
+
+  .result-score-grid > div {
+    padding-block: 6px;
+  }
+
+  .result-score-grid > div:nth-child(2) {
+    border-right: 0;
   }
 }
 

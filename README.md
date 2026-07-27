@@ -3,13 +3,14 @@
 [![CI](https://github.com/kevinalliswell/typing-adventure/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinalliswell/typing-adventure/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-给 6-8 岁孩子使用的英文 QWERTY 键盘练习游戏。课程按暑假 6 周设计：每天两次、每次约 20 分钟，共 84 次练习，目标是从认识 F/J 定位键开始，逐步熟悉全键盘、空格、Shift、标点和短句输入。
+给 6-8 岁孩子使用的英文 QWERTY 键盘练习游戏。课程按暑假 6 周设计：每天两次、每次 10-20 分钟（可选），共 84 次练习，目标是从认识 F/J 定位键开始，逐步熟悉全键盘、空格、Shift、标点和短句输入。
 
 这是一个离线优先的浏览器应用，不需要账号、后端或远程媒体资源。
 
 ## 特性
 
 - 42 天课程、每天 2 次练习、三档难度和弱键自适应复习。
+- 一次练习由热身关和多个玩法小关组成，时长可选 10 / 15 / 20 分钟；每 2 关休息一次，完成一半以上小关记为正式课次。
 - 五种轮换玩法：找星星、气球防线、小火车、密码门、火箭冲刺。
 - 气球防线包含下落气球、键盘炮台、子弹拖尾、炮口闪光、命中爆炸和音效反馈。
 - 屏幕键盘、键位熟练度、准确率、连续正确和星星积分反馈。
@@ -47,7 +48,7 @@ npm run dev
 - `src/ui.js` / `src/styles.css`：儿童化“键盘星球”视觉系统、五种玩法和响应式布局。
 - `test/`：课程、输入、本地存储、声音和气球玩法的单元测试。
 
-课程细节见 [`docs/course-plan.md`](./docs/course-plan.md)：6 周、84 次练习，每天两次，每次约 20 分钟。
+课程细节见 [`docs/course-plan.md`](./docs/course-plan.md)：6 周、84 次练习，每天两次，每次 10-20 分钟（可在首页选择）。
 
 ## 设计来源
 
