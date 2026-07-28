@@ -15,14 +15,26 @@ import {
 import { createBalloonRound, shootBalloon, updateBalloonRound } from "./balloon-game.js";
 import { isCorrectInput, isIgnoredKey, requiresShift } from "./input.js";
 import { SoundBoard } from "./audio.js";
-import { loadProfile, saveProfile } from "./storage.js";
-import { formatTime, renderBalloonArena, renderHome, renderKeyboard, renderPractice, renderResult, renderTarget } from "./ui.js";
+import {
+  DEFAULT_PROFILE_NAME,
+  PROFILE_AVATARS,
+  addProfile,
+  clearDraftData,
+  ensureRoster,
+  loadDraftData,
+  loadProfileData,
+  saveDraftData,
+  saveProfileData,
+  setActiveProfile,
+} from "./storage.js";
+import { formatTime, renderBalloonArena, renderHome, renderKeyboard, renderPractice, renderProfiles, renderResult, renderTarget } from "./ui.js";
 import "./styles.css";
 
-const DRAFT_KEY = "typing-adventure:session-draft";
-const DRAFT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const app = document.querySelector("#app");
-let profile = loadProfile();
+let roster = ensureRoster();
+let activeProfileId = roster.activeId;
+let profile = loadProfileData(activeProfileId);
 let screen = "home";
 let run = null;
 let timerHandle = null;
@@ -30,8 +42,44 @@ let balloonFrameHandle = null;
 let balloonLastFrame = 0;
 const sound = new SoundBoard(profile.audio);
 
+// 旧版本把草稿放在 sessionStorage，迁移后不再读取，顺手清掉。
+try {
+  sessionStorage.removeItem("typing-adventure:session-draft");
+} catch {
+  // 忽略存储不可用。
+}
+
+function activeExplorer() {
+  return roster.profiles.find((entry) => entry.id === activeProfileId) ?? null;
+}
+
+function profileSummaries() {
+  return roster.profiles.map((entry) => {
+    const data = entry.id === activeProfileId ? profile : loadProfileData(entry.id);
+    return {
+      ...entry,
+      completedDays: Math.floor(Math.min(data.completedSessions ?? 0, 84) / 2),
+    };
+  });
+}
+
+function getValidDraft() {
+  const draft = loadDraftData(activeProfileId);
+  if (!draft || draft.version !== 2 || Date.now() - Number(draft.savedAt) > DRAFT_MAX_AGE_MS) return null;
+  return draft;
+}
+
+function describeDraft(draft) {
+  if (!draft) return null;
+  return {
+    dayNumber: Math.min(42, Math.max(1, Number(draft.plan?.dayNumber) || 1)),
+    sessionNumber: Math.min(2, Math.max(1, Number(draft.plan?.sessionNumber) || 1)),
+  };
+}
+
 function render() {
-  if (screen === "home") app.innerHTML = renderHome(profile);
+  if (screen === "home") app.innerHTML = renderHome(profile, { explorer: activeExplorer(), draft: describeDraft(getValidDraft()) });
+  if (screen === "profiles") app.innerHTML = renderProfiles(roster, profileSummaries());
   if (screen === "practice" && run) app.innerHTML = renderPractice(profile, run);
   if (screen === "result" && run?.result) {
     app.innerHTML = renderResult(profile, run.result);
@@ -223,6 +271,10 @@ function setText(selector, text) {
 }
 
 function acceptKey(event) {
+  if (screen === "profiles" && event.key === "Enter" && event.target?.id === "new-profile-name") {
+    createNewProfile();
+    return;
+  }
   if (!run || screen !== "practice" || run.paused || run.resting) return;
   if (isBalloonActivity()) {
     handleBalloonInput(event);
@@ -393,6 +445,10 @@ function resumePractice() {
   saveDraft();
 }
 
+function persistProfile() {
+  saveProfileData(activeProfileId, profile);
+}
+
 function recordRunToProfile() {
   profile = completeSession(profile, {
     accuracy: run.total === 0 ? 0 : run.correct / run.total,
@@ -401,7 +457,7 @@ function recordRunToProfile() {
     completedStages: run.completedStages,
     totalStages: run.stages.length,
   });
-  saveProfile(profile);
+  persistProfile();
 }
 
 function finishPractice({ allowEmpty = false } = {}) {
@@ -413,6 +469,7 @@ function finishPractice({ allowEmpty = false } = {}) {
   const totalStages = run.stages.length;
   const counted = run.total > 0 && isCountedSession(run.completedStages, totalStages);
   if (run.countsTowardProgress && run.total > 0) recordRunToProfile();
+  else persistProfile();
   sound.complete();
   sound.speak(run.total === 0
     ? "本次还没有输入，可以重新开始"
@@ -472,6 +529,7 @@ function goHome({ force = false } = {}) {
       return;
     }
     if (willRecord) recordRunToProfile();
+    else persistProfile();
   }
   clearTimer();
   stopBalloonMode();
@@ -481,10 +539,57 @@ function goHome({ force = false } = {}) {
   render();
 }
 
+function openProfiles() {
+  if (screen === "practice") return;
+  screen = "profiles";
+  run = null;
+  render();
+  document.querySelector("#new-profile-name")?.focus();
+}
+
+function selectProfile(id) {
+  if (!roster.profiles.some((entry) => entry.id === id)) return;
+  persistProfile();
+  roster = setActiveProfile(roster, id);
+  activeProfileId = id;
+  profile = loadProfileData(id);
+  sound.update(profile.audio);
+  screen = "home";
+  run = null;
+  render();
+}
+
+function createNewProfile() {
+  const input = document.querySelector("#new-profile-name");
+  const name = input?.value?.trim() || DEFAULT_PROFILE_NAME;
+  const avatar = document.querySelector(".avatar-option.is-selected")?.dataset.avatar || PROFILE_AVATARS[0];
+  const result = addProfile(roster, { name, avatar });
+  if (!result.profile) return;
+  persistProfile();
+  roster = result.roster;
+  activeProfileId = result.profile.id;
+  profile = loadProfileData(activeProfileId);
+  sound.update(profile.audio);
+  screen = "home";
+  render();
+  sound.speak(`${result.profile.name}，欢迎来到键盘星球`);
+}
+
+function chooseAvatar(target) {
+  if (!target) return;
+  document.querySelectorAll(".avatar-option").forEach((element) => {
+    element.classList.remove("is-selected");
+    element.setAttribute("aria-pressed", "false");
+  });
+  target.classList.add("is-selected");
+  target.setAttribute("aria-pressed", "true");
+  document.querySelector("#new-profile-name")?.focus();
+}
+
 function updateDifficulty(id) {
   if (!Object.hasOwn(DIFFICULTIES, id)) return;
   profile = { ...profile, difficultyId: id };
-  saveProfile(profile);
+  persistProfile();
   render();
   document.querySelector(`[data-difficulty="${id}"]`)?.focus();
 }
@@ -492,7 +597,7 @@ function updateDifficulty(id) {
 function updateSessionPlan(id) {
   if (!Object.hasOwn(SESSION_PLANS, id)) return;
   profile = { ...profile, sessionPlanId: id };
-  saveProfile(profile);
+  persistProfile();
   render();
   document.querySelector(`[data-plan="${id}"]`)?.focus();
 }
@@ -501,7 +606,7 @@ function toggleAudioSetting(setting) {
   const audio = { ...profile.audio, [setting]: !profile.audio[setting] };
   profile = { ...profile, audio };
   sound.update(audio);
-  saveProfile(profile);
+  persistProfile();
   if (audio[setting]) {
     sound.unlock();
     if (setting === "voiceEnabled") sound.speak("配音已打开");
@@ -513,65 +618,50 @@ function toggleAudioSetting(setting) {
   if (screen === "practice") focusCapture();
 }
 
+// 每次落盘同时保存草稿和档案：中断时按键统计也不丢失。
 function saveDraft() {
   if (!run || screen !== "practice") return;
-  try {
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
-      version: 2,
-      savedAt: Date.now(),
-      plan: run.originalPlan,
-      countsTowardProgress: run.countsTowardProgress,
-      state: {
-        difficultyId: run.difficultyId,
-        sessionPlanId: run.sessionPlanId,
-        stageIndex: run.stageIndex,
-        stageProgress: run.stageProgress,
-        completedStages: run.completedStages,
-        prompt: run.prompt,
-        promptIndex: run.promptIndex,
-        typed: run.typed,
-        correct: run.correct,
-        errors: run.errors,
-        total: run.total,
-        streak: run.streak,
-        score: run.score,
-        elapsedSeconds: run.elapsedSeconds,
-        lastFeedback: run.lastFeedback,
-        feedbackText: run.feedbackText,
-        announcement: run.announcement,
-      },
-    }));
-  } catch {
-    // 浏览器禁用会话存储时，练习仍可继续。
-  }
+  saveDraftData(activeProfileId, {
+    version: 2,
+    savedAt: Date.now(),
+    plan: run.originalPlan,
+    countsTowardProgress: run.countsTowardProgress,
+    state: {
+      difficultyId: run.difficultyId,
+      sessionPlanId: run.sessionPlanId,
+      stageIndex: run.stageIndex,
+      stageProgress: run.stageProgress,
+      completedStages: run.completedStages,
+      prompt: run.prompt,
+      promptIndex: run.promptIndex,
+      typed: run.typed,
+      correct: run.correct,
+      errors: run.errors,
+      total: run.total,
+      streak: run.streak,
+      score: run.score,
+      elapsedSeconds: run.elapsedSeconds,
+      lastFeedback: run.lastFeedback,
+      feedbackText: run.feedbackText,
+      announcement: run.announcement,
+    },
+  });
+  persistProfile();
 }
 
 function clearDraft() {
-  try {
-    sessionStorage.removeItem(DRAFT_KEY);
-  } catch {
-    // 忽略存储不可用。
-  }
+  clearDraftData(activeProfileId);
 }
 
-function restoreDraft() {
-  let draft;
-  try {
-    draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null");
-  } catch {
-    clearDraft();
-    return false;
+function resumeDraft() {
+  const draft = getValidDraft();
+  if (!draft) {
+    render();
+    return;
   }
-  if (!draft || draft.version !== 2 || Date.now() - Number(draft.savedAt) > DRAFT_MAX_AGE_MS) {
-    clearDraft();
-    return false;
-  }
+  clearTimer();
   const dayNumber = Math.min(42, Math.max(1, Number(draft.plan?.dayNumber) || 1));
   const sessionNumber = Math.min(2, Math.max(1, Number(draft.plan?.sessionNumber) || 1));
-  if (!window.confirm(`发现第 ${dayNumber} 天第 ${sessionNumber} 次未完成的探险，是否继续？`)) {
-    clearDraft();
-    return false;
-  }
   const lesson = getLesson(dayNumber);
   const plan = { dayNumber, sessionNumber, totalSessions: 84, lesson };
   const state = draft.state ?? {};
@@ -586,6 +676,8 @@ function restoreDraft() {
     : choosePrompt(lesson, profile, Math.max(0, Number(state.promptIndex) || 0));
   const prompt = typeof state.prompt === "string" && state.prompt ? state.prompt : fallbackPrompt;
   const typed = typeof state.typed === "string" && state.typed.length < prompt.length ? state.typed : "";
+  sound.update(profile.audio);
+  sound.unlock();
   run = {
     plan,
     originalPlan: { dayNumber, sessionNumber },
@@ -610,24 +702,26 @@ function restoreDraft() {
     score: Math.max(0, Number(state.score) || 0),
     elapsedSeconds: Math.min(MAX_SESSION_SECONDS, Math.max(0, Number(state.elapsedSeconds) || 0)),
     lastFeedback: typeof state.lastFeedback === "string" ? state.lastFeedback : "ready",
-    feedbackText: typeof state.feedbackText === "string" ? state.feedbackText : "星语继续前进",
+    feedbackText: "接着上次的进度继续飞",
     lastPressed: "",
-    announcement: typeof state.announcement === "string" ? state.announcement : "继续未完成的探险",
+    announcement: "继续未完成的探险",
     paused: false,
   };
   screen = "practice";
   render();
   focusCapture();
   if (isBalloonActivity()) startBalloonMode();
+  sound.station();
+  sound.speak("欢迎回来，继续飞行");
   timerHandle = window.setInterval(tick, 1000);
   saveDraft();
-  return true;
 }
 
 app.addEventListener("click", (event) => {
   const action = event.target.closest("[data-action]")?.dataset.action;
   if (!action) return;
   if (action === "start") startPractice();
+  if (action === "resume-draft") resumeDraft();
   if (action === "pause") pausePractice();
   if (action === "resume") resumePractice();
   if (action === "skip-rest") endRest();
@@ -635,6 +729,14 @@ app.addEventListener("click", (event) => {
   if (action === "home") goHome();
   if (action === "retry") retryCompletedSession();
   if (action === "continue") continueToNextSession();
+  if (action === "switch-profile") openProfiles();
+  if (action === "profiles-back") {
+    screen = "home";
+    render();
+  }
+  if (action === "select-profile") selectProfile(event.target.closest("[data-id]")?.dataset.id);
+  if (action === "create-profile") createNewProfile();
+  if (action === "avatar-option") chooseAvatar(event.target.closest(".avatar-option"));
   if (action === "difficulty") updateDifficulty(event.target.closest("[data-difficulty]").dataset.difficulty);
   if (action === "session-plan") updateSessionPlan(event.target.closest("[data-plan]").dataset.plan);
   if (action === "toggle-effects") toggleAudioSetting("effectsEnabled");
@@ -654,4 +756,3 @@ window.addEventListener("beforeunload", (event) => {
 });
 
 render();
-restoreDraft();

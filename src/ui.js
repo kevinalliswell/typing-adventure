@@ -1,4 +1,5 @@
 import { DIFFICULTIES, KEY_ROWS, SESSION_PLANS, getCourseProgress, getDailyPlan, getMastery, getSessionPlan, normalizeKey } from "./engine.js";
+import { MAX_PROFILES, PROFILE_AVATARS } from "./storage.js";
 import { requiresShift } from "./input.js";
 import { BALLOON_EXPLOSION_SECONDS, BALLOON_FIELD_HEIGHT, PROJECTILE_FLIGHT_SECONDS } from "./balloon-game.js";
 
@@ -76,19 +77,27 @@ function renderWeekMap(profile) {
   }).join("");
 }
 
-export function renderHome(profile) {
+export function renderHome(profile, context = {}) {
   const plan = getDailyPlan(profile);
   const progress = getCourseProgress(profile);
   const difficulty = DIFFICULTIES[profile.difficultyId];
   const sessionPlan = getSessionPlan(profile.sessionPlanId);
+  const explorer = context.explorer ?? null;
+  const draft = context.draft ?? null;
+  const explorerChip = explorer
+    ? `<button class="explorer-chip" type="button" data-action="switch-profile" title="切换探险家" aria-label="当前探险家 ${escapeHtml(explorer.name)}，点击切换"><span aria-hidden="true">${escapeHtml(explorer.avatar)}</span><strong>${escapeHtml(explorer.name)}</strong></button>`
+    : "";
+  const heroCta = draft
+    ? `<div class="resume-card"><div class="resume-copy"><strong>上次探险还没飞完</strong><span>第 ${draft.dayNumber} 天 · 第 ${draft.sessionNumber} 次，进度已保存好</span></div><div class="resume-actions"><button class="primary-action" type="button" data-action="resume-draft"><span aria-hidden="true">▶</span> 继续上次探险</button><button class="secondary-action" type="button" data-action="start">重新开始</button></div></div>`
+    : `<button class="primary-action" type="button" data-action="start"><span aria-hidden="true">▶</span> 开始今天的探险</button>`;
   return `<main class="app-shell home-shell">
-    <header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools">${renderAudioControls(profile)}<div class="privacy-chip"><span aria-hidden="true">●</span> 本地保存</div></div></header>
+    <header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools">${explorerChip}${renderAudioControls(profile)}<div class="privacy-chip"><span aria-hidden="true">●</span> 本地保存</div></div></header>
     <section class="home-hero page-width">
       <div class="hero-copy">
         <p class="eyebrow">第 ${plan.dayNumber} 天 · 第 ${plan.sessionNumber} 次探险</p>
-        <h1>准备好，<em>小小键盘星探</em>！</h1>
+        <h1>准备好，<em>${escapeHtml(explorer?.name ?? "小小键盘星探")}</em>！</h1>
         <p class="hero-story">今天去 <strong>${escapeHtml(plan.lesson.title)}</strong>，让每一颗键位星星都找到自己的位置。</p>
-        <button class="primary-action" type="button" data-action="start"><span aria-hidden="true">▶</span> 开始今天的探险</button>
+        ${heroCta}
       </div>
       ${renderPlanet()}
     </section>
@@ -112,6 +121,33 @@ export function renderHome(profile) {
       <div class="plan-grid" aria-labelledby="plan-title">${renderSessionPlans(profile)}</div>
     </section>
     <footer class="site-footer page-width"><span>键盘星球 · 6 周成长航线</span><span>不需要账号，进度只在这台设备上</span></footer>
+  </main>`;
+}
+
+export function renderProfiles(roster, summaries) {
+  const canCreate = roster.profiles.length < MAX_PROFILES;
+  const cards = summaries.map((entry) => `
+    <button class="profile-card ${entry.id === roster.activeId ? "is-selected" : ""}" type="button" data-action="select-profile" data-id="${escapeHtml(entry.id)}" aria-pressed="${entry.id === roster.activeId}">
+      <span class="profile-avatar" aria-hidden="true">${escapeHtml(entry.avatar)}</span>
+      <strong>${escapeHtml(entry.name)}</strong>
+      <small>已完成 ${entry.completedDays} / 42 天</small>
+    </button>`).join("");
+  const createBlock = canCreate
+    ? `<div class="profile-create">
+        <h2>新探险家</h2>
+        <div class="avatar-row" role="group" aria-label="选择头像">${PROFILE_AVATARS.map((avatar, index) => `<button class="avatar-option ${index === 0 ? "is-selected" : ""}" type="button" data-action="avatar-option" data-avatar="${escapeHtml(avatar)}" aria-pressed="${index === 0}" aria-label="头像 ${escapeHtml(avatar)}">${escapeHtml(avatar)}</button>`).join("")}</div>
+        <div class="create-row"><input id="new-profile-name" class="profile-name-input" maxlength="12" placeholder="名字，比如：小宇" aria-label="新探险家名字" autocomplete="off" spellcheck="false" /><button class="primary-action" type="button" data-action="create-profile">创建并出发</button></div>
+      </div>`
+    : `<p class="profiles-note">最多 ${MAX_PROFILES} 位探险家啦，先和家长商量一下要不要整理档案。</p>`;
+  return `<main class="app-shell profiles-shell">
+    <header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools">${roster.activeId ? '<button class="icon-action" type="button" data-action="profiles-back" aria-label="返回首页" title="返回首页">←</button>' : ""}</div></header>
+    <section class="profiles-content page-width">
+      <p class="eyebrow">谁来探险</p>
+      <h1>选择你的探险家</h1>
+      <p class="profiles-note">每位探险家的课程进度、键位熟练度和设置都分开保存，互不打扰。</p>
+      <div class="profile-grid">${cards}</div>
+      ${createBlock}
+    </section>
   </main>`;
 }
 
