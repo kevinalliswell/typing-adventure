@@ -1,4 +1,5 @@
 import {
+  BADGES,
   DIFFICULTIES,
   MAX_SESSION_SECONDS,
   REST_SECONDS,
@@ -9,6 +10,7 @@ import {
   getDailyPlan,
   getLesson,
   isCountedSession,
+  isHintVisible,
   normalizeKey,
   recordKey,
 } from "./engine.js";
@@ -27,7 +29,7 @@ import {
   saveProfileData,
   setActiveProfile,
 } from "./storage.js";
-import { formatTime, renderBalloonArena, renderHome, renderKeyboard, renderPractice, renderProfiles, renderResult, renderTarget } from "./ui.js";
+import { formatTime, renderActivityStrip, renderBalloonArena, renderHome, renderKeyboard, renderPractice, renderProfiles, renderResult, renderTarget } from "./ui.js";
 import "./styles.css";
 
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -110,13 +112,13 @@ function isBalloonActivity() {
 function nextPrompt() {
   const stage = currentStage();
   if (stage.type === "warmup") return stage.prompts[run.stageProgress % stage.prompts.length];
-  return choosePrompt(run.lesson, profile, run.promptIndex);
+  return choosePrompt(run.lesson, profile, run.promptIndex, run.prompt);
 }
 
 function startBalloonMode() {
   if (!run || !isBalloonActivity() || run.resting || run.paused) return;
   const keys = run.lesson.activeKeys.filter((key) => /^[a-z]$/.test(key));
-  run.balloonRound = createBalloonRound(keys);
+  run.balloonRound = createBalloonRound(keys, { targetHits: currentStage().target });
   balloonLastFrame = performance.now();
   updateBalloonView();
   balloonFrameHandle = window.requestAnimationFrame(balloonFrame);
@@ -136,14 +138,26 @@ function balloonFrame(now) {
   }
   const elapsed = Math.min(0.12, Math.max(0, (now - balloonLastFrame) / 1000));
   balloonLastFrame = now;
+  const previousMisses = run.balloonRound.misses;
   run.balloonRound = updateBalloonRound(run.balloonRound, elapsed);
+  const missedNow = run.balloonRound.misses - previousMisses;
+  if (missedNow > 0) {
+    run.score = Math.max(0, run.score - 5 * missedNow);
+    run.lastFeedback = "wrong";
+    run.feedbackText = "有气球落地了，星星 −5";
+    run.announcement = "气球落地，扣 5 颗星星";
+    sound.wrong();
+    updatePracticeView();
+  }
   updateBalloonView();
   balloonFrameHandle = window.requestAnimationFrame(balloonFrame);
 }
 
 function updateBalloonView() {
   const arena = document.querySelector("#balloon-arena");
-  if (arena && run?.balloonRound) arena.innerHTML = renderBalloonArena(run.balloonRound);
+  if (!arena || !run?.balloonRound) return;
+  const remaining = Math.max(0, currentStage().target - run.stageProgress);
+  arena.innerHTML = renderBalloonArena(run.balloonRound, { remaining });
 }
 
 function createRun(plan, { countsTowardProgress = true } = {}) {
@@ -166,6 +180,9 @@ function createRun(plan, { countsTowardProgress = true } = {}) {
     resting: false,
     restRemaining: 0,
     activity: stages[0].activity,
+    stageMeta: { cars: 0, altitude: 0 },
+    currentErrors: 0,
+    promptHadError: false,
     prompt: stages[0].prompts[0],
     promptIndex: 0,
     typed: "",
@@ -229,10 +246,14 @@ function updatePracticeView() {
   if (targetPanel) targetPanel.hidden = balloonActive;
   if (arena) arena.hidden = !balloonActive;
   if (balloonActive) updateBalloonView();
+  const maskFrom = run.activity.id === "code-lock" ? Math.ceil(run.prompt.length / 2) : Infinity;
   const target = document.querySelector("#target-sequence");
-  if (target) target.innerHTML = renderTarget(run.prompt, run.typed, run.lastFeedback);
+  if (target) target.innerHTML = renderTarget(run.prompt, run.typed, run.lastFeedback, maskFrom);
+  const strip = document.querySelector("#activity-strip");
+  if (strip) strip.innerHTML = renderActivityStrip(run);
+  const hintVisible = isHintVisible(DIFFICULTIES[run.difficultyId], stage.type, run.currentErrors);
   const keyboard = document.querySelector("#keyboard-container");
-  if (keyboard) keyboard.innerHTML = renderKeyboard(run.lesson, profile, balloonActive ? "" : expected, run.lastPressed);
+  if (keyboard) keyboard.innerHTML = renderKeyboard(run.lesson, profile, balloonActive || !hintVisible ? "" : expected, run.lastPressed);
   setText("#accuracy-value", accuracy);
   setText("#streak-value", `${run.streak} 次`);
   setText("#score-value", String(run.score));
@@ -241,7 +262,7 @@ function updatePracticeView() {
     ? "按字母键发射能量弹"
     : stage.type === "warmup"
       ? "热身：跟着亮起来的键就好"
-      : DIFFICULTIES[run.difficultyId].hints ? "目标键会亮起来" : "跟着目标，自己寻找");
+      : hintVisible ? "目标键会亮起来" : "先自己找找，需要时提示会出现");
   setText("#feedback-line", run.feedbackText);
   const activityBanner = document.querySelector("#activity-banner");
   if (activityBanner) activityBanner.className = `activity-banner activity-banner--${run.activity.id}`;
@@ -299,9 +320,15 @@ function acceptKey(event) {
     run.correct += 1;
     run.streak += 1;
     run.score += 10 + Math.min(20, run.streak);
+    run.currentErrors = 0;
     run.lastFeedback = "correct";
     run.feedbackText = run.streak >= 5 ? "连成一条星河！" : "漂亮！继续前进";
     run.announcement = "正确";
+    if (run.activity.id === "word-train") {
+      run.stageMeta.cars = Math.min(12, run.stageMeta.cars + 1);
+      run.feedbackText = `火车挂上第 ${run.stageMeta.cars} 节车厢`;
+    }
+    if (run.activity.id === "rocket-dash") run.stageMeta.altitude += 1;
     if (run.typed.length >= run.prompt.length) {
       finishPrompt();
       return;
@@ -309,10 +336,16 @@ function acceptKey(event) {
   } else {
     sound.wrong();
     run.errors += 1;
+    run.currentErrors += 1;
+    run.promptHadError = true;
     if (currentStage().type !== "warmup") run.streak = 0;
     run.lastFeedback = "wrong";
     run.feedbackText = `再找找：${expected === " " ? "space" : expected}`;
     run.announcement = "再试一次";
+    if (run.activity.id === "word-train" && run.stageMeta.cars > 0) {
+      run.stageMeta.cars -= 1;
+      run.feedbackText = "哎呀，一节车厢掉了，稳住再挂上";
+    }
   }
   updatePracticeView();
 }
@@ -321,12 +354,21 @@ function finishPrompt() {
   run.stageProgress += 1;
   run.promptIndex += 1;
   run.typed = "";
+  run.currentErrors = 0;
+  if (run.activity.id === "rocket-dash" && !run.promptHadError) {
+    run.score += 10;
+    run.feedbackText = "完美冲刺！火箭加速 +10";
+  } else if (run.activity.id === "code-lock") {
+    run.feedbackText = "咔哒！这扇密码门开了";
+  } else {
+    run.feedbackText = "星语通过，下一条来了";
+  }
+  run.promptHadError = false;
   if (run.stageProgress >= currentStage().target) {
     completeStage();
     return;
   }
   run.prompt = nextPrompt();
-  run.feedbackText = "星语通过，下一条来了";
   run.announcement = "星语通过";
   sound.station();
   updatePracticeView();
@@ -334,9 +376,16 @@ function finishPrompt() {
 
 function completeStage() {
   const finishedStage = currentStage();
+  if (finishedStage.activity.id === "word-train" && run.stageMeta.cars >= 8) {
+    run.score += 20;
+    run.feedbackText = `火车满载 ${run.stageMeta.cars} 节车厢，奖励 +20`;
+  }
   run.completedStages += 1;
   run.stageProgress = 0;
   run.typed = "";
+  run.stageMeta = { cars: 0, altitude: 0 };
+  run.currentErrors = 0;
+  run.promptHadError = false;
   if (finishedStage.type === "balloon") stopBalloonMode();
   if (run.completedStages >= run.stages.length) {
     finishPractice({ allowEmpty: true });
@@ -456,6 +505,7 @@ function recordRunToProfile() {
     completedAt: new Date().toISOString(),
     completedStages: run.completedStages,
     totalStages: run.stages.length,
+    score: run.score,
   });
   persistProfile();
 }
@@ -468,13 +518,21 @@ function finishPractice({ allowEmpty = false } = {}) {
   const accuracy = run.total === 0 ? 0 : run.correct / run.total;
   const totalStages = run.stages.length;
   const counted = run.total > 0 && isCountedSession(run.completedStages, totalStages);
+  const metTarget = counted && accuracy >= DIFFICULTIES[run.difficultyId].targetAccuracy;
+  const previousBadges = profile.badges ?? {};
+  const previousBest = profile.bestScore ?? 0;
   if (run.countsTowardProgress && run.total > 0) recordRunToProfile();
   else persistProfile();
+  const newBadges = Object.keys(profile.badges ?? {})
+    .filter((id) => !previousBadges[id])
+    .map((id) => BADGES.find((badge) => badge.id === id))
+    .filter(Boolean)
+    .map((badge) => ({ icon: badge.icon, title: badge.title, description: badge.description }));
   sound.complete();
   sound.speak(run.total === 0
     ? "本次还没有输入，可以重新开始"
     : counted
-      ? accuracy >= 0.92 ? "漂亮的降落" : "探险完成"
+      ? metTarget ? "漂亮的降落" : "探险完成"
       : "热身完成，下次接着飞");
   run.result = {
     accuracy,
@@ -483,9 +541,14 @@ function finishPractice({ allowEmpty = false } = {}) {
     errors: run.errors,
     empty: run.total === 0,
     counted,
+    metTarget,
     completedStages: run.completedStages,
     totalStages,
     elapsedSeconds: run.elapsedSeconds,
+    totalStars: profile.totalStars ?? 0,
+    bestScore: profile.bestScore ?? 0,
+    isNewBest: counted && run.score > 0 && run.score > previousBest,
+    newBadges,
     originalPlan: run.originalPlan,
   };
   run.resting = false;
@@ -692,6 +755,9 @@ function resumeDraft() {
     resting: false,
     restRemaining: 0,
     activity: stage.activity,
+    stageMeta: { cars: 0, altitude: 0 },
+    currentErrors: 0,
+    promptHadError: false,
     prompt,
     promptIndex: Math.max(0, Number(state.promptIndex) || 0),
     typed,

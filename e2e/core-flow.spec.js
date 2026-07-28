@@ -43,6 +43,9 @@ test("completing half of the stages earns the session credit", async ({ page }) 
   expect(stored.completedSessions).toBe(1);
   expect(stored.history[0].counted).toBe(true);
   expect(stored.history[0].completedStages).toBe(2);
+  expect(stored.history[0].score).toBeGreaterThan(0);
+  expect(stored.totalStars).toBeGreaterThan(0);
+  expect(stored.badges["first-flight"]).toBeTruthy();
 });
 
 test("stopping early records a warmup without advancing the course", async ({ page }) => {

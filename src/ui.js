@@ -1,4 +1,4 @@
-import { DIFFICULTIES, KEY_ROWS, SESSION_PLANS, getCourseProgress, getDailyPlan, getMastery, getSessionPlan, normalizeKey } from "./engine.js";
+import { DIFFICULTIES, KEY_ROWS, SESSION_PLANS, getCourseProgress, getDailyPlan, getMastery, getSessionPlan, isHintVisible, normalizeKey } from "./engine.js";
 import { MAX_PROFILES, PROFILE_AVATARS } from "./storage.js";
 import { requiresShift } from "./input.js";
 import { BALLOON_EXPLOSION_SECONDS, BALLOON_FIELD_HEIGHT, PROJECTILE_FLIGHT_SECONDS } from "./balloon-game.js";
@@ -111,7 +111,7 @@ export function renderHome(profile, context = {}) {
         <div class="card-heading"><div><p class="eyebrow">SUMMER JOURNEY</p><h2>暑假探险地图</h2></div><strong class="progress-percent">${progress.percent}%</strong></div>
         <div class="progress-bar" aria-label="课程进度 ${progress.percent}%"><span style="width: ${progress.percent}%"></span></div>
         <div class="week-map">${renderWeekMap(profile)}</div>
-        <p class="muted-note">已完成 ${progress.completedDays} / ${progress.totalDays} 天 · 每天两次，稳稳进步</p>
+        <p class="muted-note">已完成 ${progress.completedDays} / ${progress.totalDays} 天 · ✦ 累计星星 ${profile.totalStars ?? 0} · 徽章 ${Object.keys(profile.badges ?? {}).length} 枚</p>
       </article>
     </section>
     <section class="settings-section page-width" aria-labelledby="difficulty-title">
@@ -151,17 +151,43 @@ export function renderProfiles(roster, summaries) {
   </main>`;
 }
 
-export function renderTarget(prompt, typed, lastFeedback) {
+export function renderTarget(prompt, typed, lastFeedback, maskFrom = Infinity) {
   return [...prompt].map((character, index) => {
     const isDone = index < typed.length;
     const isCurrent = index === typed.length;
+    const isMasked = !isDone && index >= maskFrom;
     const classNames = ["target-char"];
     if (isDone) classNames.push("is-done");
     if (isCurrent) classNames.push("is-current");
     if (isCurrent && lastFeedback === "wrong") classNames.push("is-wrong");
-    const display = character === " " ? "·" : character;
+    if (isMasked) classNames.push("is-masked");
+    const display = isMasked ? "?" : character === " " ? "·" : character;
     return `<span class="${classNames.join(" ")}" data-char-index="${index}">${escapeHtml(display)}</span>`;
   }).join("");
+}
+
+export function renderActivityStrip(run) {
+  const stage = run.stages[run.stageIndex];
+  const activityId = run.activity.id;
+  if (activityId === "star-scout") {
+    const stars = Array.from({ length: stage.target }, (_, index) =>
+      `<span class="strip-star ${index < run.stageProgress ? "is-filled" : ""}" aria-hidden="true">✦</span>`).join("");
+    return `<div class="strip-row" aria-label="本关收集 ${run.stageProgress} / ${stage.target} 颗星星">${stars}<small>收集 ${stage.target} 颗星星</small></div>`;
+  }
+  if (activityId === "word-train") {
+    const cars = Array.from({ length: Math.min(12, run.stageMeta.cars) }, () => '<i class="train-car" aria-hidden="true"></i>').join("");
+    return `<div class="strip-row" aria-label="火车现在有 ${run.stageMeta.cars} 节车厢"><i class="train-head" aria-hidden="true">➜</i>${cars}<small>连对挂车厢，打错掉一节</small></div>`;
+  }
+  if (activityId === "code-lock") {
+    const dots = [...run.prompt].map((_, index) =>
+      `<span class="lock-dot ${index < run.typed.length ? "is-filled" : ""}" aria-hidden="true"></span>`).join("");
+    return `<div class="strip-row" aria-label="密码进度 ${run.typed.length} / ${run.prompt.length}"><span class="lock-glyph" aria-hidden="true">⌁</span>${dots}<small>后半段密码被遮住，记住它</small></div>`;
+  }
+  if (activityId === "rocket-dash") {
+    const percent = Math.min(100, run.stageMeta.altitude * 4);
+    return `<div class="strip-row" aria-label="火箭高度 ${run.stageMeta.altitude}"><div class="altitude-bar"><span style="width: ${percent}%"></span><i style="left: ${Math.min(96, percent)}%" aria-hidden="true">↗</i></div><small>高度 ${run.stageMeta.altitude} · 零失误冲刺有加速</small></div>`;
+  }
+  return "";
 }
 
 function keyLabel(key) {
@@ -194,15 +220,16 @@ export function renderKeyboard(lesson, profile, expected, lastPressed = "") {
   </div>`;
 }
 
-export function renderBalloonArena(round) {
+export function renderBalloonArena(round, context = {}) {
   const safeRound = round ?? {
     balloons: [],
     hits: 0,
     misses: 0,
-    score: 0,
+    targetHits: 8,
     shotFlash: 0,
     height: BALLOON_FIELD_HEIGHT,
   };
+  const remaining = Math.max(0, Number(context.remaining ?? ((safeRound.targetHits ?? 8) - safeRound.hits)) || 0);
   const sparkAngles = [0, 45, 90, 135, 180, 225, 270, 315];
   const balloons = safeRound.balloons.map((balloon) => {
     const isExploding = balloon.state === "exploding";
@@ -222,8 +249,8 @@ export function renderBalloonArena(round) {
   const projectiles = (safeRound.projectiles ?? []).map((projectile) => `<span class="energy-projectile" style="left: ${projectile.x}%; top: ${projectile.y}px" aria-hidden="true"><i></i></span>`).join("");
   return `<div class="balloon-field" style="--field-height: ${safeRound.height}px" role="img" aria-label="气球防线：击落 ${safeRound.hits} 个，漏掉 ${safeRound.misses} 个">
     <div class="balloon-cloud balloon-cloud--one" aria-hidden="true"></div><div class="balloon-cloud balloon-cloud--two" aria-hidden="true"></div>
-    <div class="balloon-field__title"><span>气球防线</span><small>按字母发射能量弹</small></div>
-    <div class="balloon-field__stats"><span>击落 <strong>${safeRound.hits}</strong></span><span>漏掉 <strong>${safeRound.misses}</strong></span><span>星星 <strong>${safeRound.score}</strong></span></div>
+    <div class="balloon-field__title"><span>气球防线</span><small>按字母发射能量弹，漏掉会掉星星</small></div>
+    <div class="balloon-field__stats"><span>击落 <strong>${safeRound.hits}</strong></span><span>漏掉 <strong>${safeRound.misses}</strong></span><span>还差 <strong>${remaining}</strong></span></div>
     <div class="balloon-layer">${balloons}</div>
     <div class="projectile-layer">${projectiles}</div>
     <div class="launcher ${safeRound.shotFlash > 0 ? "is-firing" : ""}" aria-hidden="true"><span class="launcher-muzzle"></span><span class="launcher-bolt">✦</span><div class="launcher-barrel"></div><div class="launcher-base"><span>键盘炮台</span></div></div>
@@ -238,11 +265,13 @@ export function renderPractice(profile, run) {
   const balloonActive = run.activity.id === "balloon-defense";
   const accuracy = run.total === 0 ? "--" : `${Math.round((run.correct / run.total) * 100)}%`;
   const fraction = Math.min(1, (run.completedStages + Math.min(1, run.stageProgress / stage.target)) / run.stages.length);
+  const hintVisible = isHintVisible(difficulty, stage.type, run.currentErrors);
+  const maskFrom = run.activity.id === "code-lock" ? Math.ceil(run.prompt.length / 2) : Infinity;
   const keyboardNote = balloonActive
     ? "按字母键发射能量弹"
     : stage.type === "warmup"
       ? "热身：跟着亮起来的键就好"
-      : difficulty.hints ? "目标键会亮起来" : "跟着目标，自己寻找";
+      : hintVisible ? "目标键会亮起来" : "先自己找找，需要时提示会出现";
   return `<main class="app-shell practice-shell ${run.paused ? "is-paused" : ""}" data-feedback="${run.lastFeedback}">
     <header class="topbar topbar--practice page-width">
       <button class="icon-action" type="button" data-action="home" aria-label="返回课程首页" title="返回课程首页">←</button>
@@ -258,13 +287,13 @@ export function renderPractice(profile, run) {
         <p class="lesson-story">${escapeHtml(run.lesson.story)}</p>
         <div class="activity-banner activity-banner--${run.activity.id}" id="activity-banner" aria-live="polite"><span class="activity-banner__icon" id="activity-icon" aria-hidden="true">${escapeHtml(run.activity.icon)}</span><div><span class="activity-banner__label">当前玩法</span><strong id="activity-title">${escapeHtml(run.activity.title)}</strong><p id="activity-hint">${escapeHtml(run.activity.hint)}</p></div><span class="activity-banner__count" id="activity-count">本关 ${run.stageProgress} / ${stage.target}</span></div>
         <div class="flight-track" aria-label="本次任务进度"><span class="track-line"></span><span class="track-fill" id="track-fill" style="width: ${fraction * 100}%"></span><span class="track-planet" id="track-planet" style="left: ${Math.min(94, 4 + fraction * 90)}%">✦</span><span class="track-label" id="track-label">${run.completedStages} / ${run.stages.length} 关</span></div>
-        <div class="target-panel" id="typing-target-panel" aria-live="polite" ${balloonActive ? "hidden" : ""}><span class="target-label">当前星语</span><div class="target-sequence" id="target-sequence" aria-label="目标文字">${renderTarget(run.prompt, run.typed, run.lastFeedback)}</div><span class="target-caption">目标中的 · 代表空格</span><input id="keyboard-capture" class="keyboard-capture" aria-label="键盘练习输入区" autocomplete="off" autocapitalize="off" spellcheck="false" /></div>
-        <div id="balloon-arena" ${balloonActive ? "" : "hidden"}>${renderBalloonArena(run.balloonRound)}</div>
+        <div class="target-panel" id="typing-target-panel" aria-live="polite" ${balloonActive ? "hidden" : ""}><span class="target-label">当前星语</span><div class="target-sequence" id="target-sequence" aria-label="目标文字">${renderTarget(run.prompt, run.typed, run.lastFeedback, maskFrom)}</div><div class="activity-strip" id="activity-strip">${renderActivityStrip(run)}</div><span class="target-caption">目标中的 · 代表空格</span><input id="keyboard-capture" class="keyboard-capture" aria-label="键盘练习输入区" autocomplete="off" autocapitalize="off" spellcheck="false" /></div>
+        <div id="balloon-arena" ${balloonActive ? "" : "hidden"}>${renderBalloonArena(run.balloonRound, { remaining: Math.max(0, stage.target - run.stageProgress) })}</div>
         <div class="feedback-line feedback-line--${run.lastFeedback}" id="feedback-line" role="status">${escapeHtml(run.feedbackText)}</div>
         <div class="live-stats" aria-label="本次练习统计"><div><span>准确率</span><strong id="accuracy-value">${accuracy}</strong></div><div><span>连续正确</span><strong id="streak-value">${run.streak}<small> 次</small></strong></div><div><span>星星</span><strong id="score-value">${run.score}</strong></div></div>
         <button class="finish-action" type="button" data-action="finish" ${run.total === 0 ? "disabled" : ""}>结束本次任务</button>
       </section>
-      <aside class="keyboard-column" aria-labelledby="keyboard-title"><div class="keyboard-heading"><div><p class="eyebrow">YOUR NAVIGATOR</p><h2 id="keyboard-title">小手导航</h2></div><span class="target-chip" id="target-chip">${balloonActive ? "发射" : escapeHtml(keyLabel(normalizeKey(expected)))}</span></div><p class="keyboard-note" id="keyboard-note">${keyboardNote}</p><div id="keyboard-container">${renderKeyboard(run.lesson, profile, balloonActive ? "" : expected, run.lastPressed)}</div><div class="finger-legend"><span><i class="legend-dot legend-dot--mint"></i>已经认识</span><span><i class="legend-dot legend-dot--yellow"></i>当前目标</span></div></aside>
+      <aside class="keyboard-column" aria-labelledby="keyboard-title"><div class="keyboard-heading"><div><p class="eyebrow">YOUR NAVIGATOR</p><h2 id="keyboard-title">小手导航</h2></div><span class="target-chip" id="target-chip">${balloonActive ? "发射" : escapeHtml(keyLabel(normalizeKey(expected)))}</span></div><p class="keyboard-note" id="keyboard-note">${keyboardNote}</p><div id="keyboard-container">${renderKeyboard(run.lesson, profile, balloonActive || !hintVisible ? "" : expected, run.lastPressed)}</div><div class="finger-legend"><span><i class="legend-dot legend-dot--mint"></i>已经认识</span><span><i class="legend-dot legend-dot--yellow"></i>当前目标</span></div></aside>
     </div>
     <div id="pause-layer">${run.paused ? renderPauseLayer() : run.resting ? renderRestLayer(run) : ""}</div>
     <div class="sr-only" aria-live="polite" id="screen-announcer">${escapeHtml(run.announcement)}</div>
@@ -283,13 +312,18 @@ export function renderResult(profile, result) {
   const nextPlan = getDailyPlan(profile);
   const accuracy = Math.round(result.accuracy * 100);
   const counted = result.counted === true;
+  const metTarget = result.metTarget === true;
   const title = counted
-    ? accuracy >= 92 ? "漂亮的降落！" : "探险完成！"
+    ? metTarget ? "漂亮的降落！" : "探险完成！"
     : result.empty ? "还没有出发" : "热身飞行完成！";
   const message = counted
-    ? accuracy >= 92 ? "星光收到了！今天的手指很稳。" : "每一次练习都会让键位更熟悉。"
+    ? metTarget ? "星光收到了！今天的手指很稳。" : "每一次练习都会让键位更熟悉。"
     : result.empty
       ? "这次还没有输入，随时可以重新开始。"
       : "这次先记为热身。完成一半以上小关，就算一次正式探险。";
-  return `<main class="app-shell result-shell"><header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools">${renderAudioControls(profile)}<div class="privacy-chip"><span aria-hidden="true">●</span> 进度已保存</div></div></header><section class="result-content page-width"><div class="result-burst" aria-hidden="true"><span>✦</span><span>✦</span><span>✦</span><div>★</div></div><p class="eyebrow">MISSION COMPLETE</p><h1>${title}</h1><p class="result-message">${message}</p><div class="result-score-grid"><div><strong>${accuracy}%</strong><span>准确率</span></div><div><strong>${result.score}</strong><span>收集星星</span></div><div><strong>${result.completedStages} / ${result.totalStages}</strong><span>完成小关</span></div><div><strong>${formatTime(result.elapsedSeconds)}</strong><span>飞行时长</span></div></div><div class="next-mission"><span class="next-icon" aria-hidden="true">✦</span><div><span>下一站</span><strong>第 ${nextPlan.dayNumber} 天 · 第 ${nextPlan.sessionNumber} 次 · ${escapeHtml(nextPlan.lesson.title)}</strong></div></div><div class="dialog-actions"><button class="primary-action" type="button" data-action="home">回到课程地图</button><button class="secondary-action" type="button" data-action="retry">再飞一次</button></div></section></main>`;
+  const rewardsLine = `<div class="result-rewards"><span>✦ 累计星星 <strong>${result.totalStars ?? 0}</strong></span><span>★ 历史最佳 <strong>${result.bestScore ?? 0}</strong>${result.isNewBest ? '<em class="new-best">新纪录！</em>' : ""}</span></div>`;
+  const badges = Array.isArray(result.newBadges) && result.newBadges.length > 0
+    ? `<div class="result-badges" aria-label="新获得的徽章"><span class="result-badges__label">新徽章</span>${result.newBadges.map((badge) => `<span class="badge-chip" title="${escapeHtml(badge.description ?? "")}"><i aria-hidden="true">${escapeHtml(badge.icon)}</i>${escapeHtml(badge.title)}</span>`).join("")}</div>`
+    : "";
+  return `<main class="app-shell result-shell"><header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools">${renderAudioControls(profile)}<div class="privacy-chip"><span aria-hidden="true">●</span> 进度已保存</div></div></header><section class="result-content page-width"><div class="result-burst" aria-hidden="true"><span>✦</span><span>✦</span><span>✦</span><div>★</div></div><p class="eyebrow">MISSION COMPLETE</p><h1>${title}</h1><p class="result-message">${message}</p><div class="result-score-grid"><div><strong>${accuracy}%</strong><span>准确率</span></div><div><strong>${result.score}</strong><span>收集星星</span></div><div><strong>${result.completedStages} / ${result.totalStages}</strong><span>完成小关</span></div><div><strong>${formatTime(result.elapsedSeconds)}</strong><span>飞行时长</span></div></div>${rewardsLine}${badges}<div class="next-mission"><span class="next-icon" aria-hidden="true">✦</span><div><span>下一站</span><strong>第 ${nextPlan.dayNumber} 天 · 第 ${nextPlan.sessionNumber} 次 · ${escapeHtml(nextPlan.lesson.title)}</strong></div></div><div class="dialog-actions"><button class="primary-action" type="button" data-action="home">回到课程地图</button><button class="secondary-action" type="button" data-action="retry">再飞一次</button></div></section></main>`;
 }

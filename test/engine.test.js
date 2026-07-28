@@ -17,6 +17,7 @@ import {
   getPromptKeys,
   getWeakestKey,
   isCountedSession,
+  isHintVisible,
   recordKey,
 } from "../src/engine.js";
 
@@ -146,6 +147,53 @@ test("difficulty presets give children a clear pressure curve", () => {
   assert.equal(DIFFICULTIES.explorer.hints, true);
   assert.equal(DIFFICULTIES.rocket.hints, false);
   assert.ok(DIFFICULTIES.rocket.targetAccuracy > DIFFICULTIES.gentle.targetAccuracy);
+  assert.ok(DIFFICULTIES.rocket.hintAfterErrors > DIFFICULTIES.explorer.hintAfterErrors);
+  assert.equal(DIFFICULTIES.gentle.hintAfterErrors, 0);
+});
+
+test("key hints follow the difficulty's error threshold", () => {
+  assert.equal(isHintVisible(DIFFICULTIES.gentle, "typing", 0), true, "gentle always shows the hint");
+  assert.equal(isHintVisible(DIFFICULTIES.explorer, "typing", 0), false);
+  assert.equal(isHintVisible(DIFFICULTIES.explorer, "typing", 1), true);
+  assert.equal(isHintVisible(DIFFICULTIES.rocket, "typing", 2), false);
+  assert.equal(isHintVisible(DIFFICULTIES.rocket, "typing", 3), true, "even rocket mode rescues after repeated errors");
+  assert.equal(isHintVisible(DIFFICULTIES.rocket, "warmup", 0), true, "warmup always shows the hint");
+});
+
+test("the same prompt is never served twice in a row", () => {
+  const profile = createProfile();
+  const lesson = getLesson(1);
+  let previous = "";
+  for (let offset = 0; offset < 20; offset += 1) {
+    const prompt = choosePrompt(lesson, profile, offset, previous);
+    assert.notEqual(prompt, previous, `offset ${offset} repeated ${JSON.stringify(prompt)}`);
+    previous = prompt;
+  }
+});
+
+test("stars accumulate across sessions and best score tracks formal flights", () => {
+  let profile = completeSession(createProfile(), { ...FULL_RESULT, score: 300 });
+  profile = completeSession(profile, { ...FULL_RESULT, score: 500 });
+  profile = completeSession(profile, { accuracy: 0.7, elapsedSeconds: 120, completedStages: 1, totalStages: 4, score: 40 });
+
+  assert.equal(profile.totalStars, 840, "warmup stars still count toward the total");
+  assert.equal(profile.bestScore, 500, "best score only tracks counted sessions");
+  assert.equal(profile.history.at(-1).score, 40);
+});
+
+test("badges are earned once and persist", () => {
+  const first = completeSession(createProfile(), { ...FULL_RESULT, accuracy: 0.99, score: 400, completedAt: "2026-07-01T09:00:00.000Z" });
+  assert.ok(first.badges["first-flight"], "first counted session earns the first badge");
+  assert.ok(first.badges["sharp-eyes"], "98%+ accuracy earns the accuracy badge");
+  assert.equal(first.badges["three-day-streak"], undefined);
+
+  let streak = first;
+  for (const day of ["2026-07-02", "2026-07-03"]) {
+    streak = completeSession(streak, { ...FULL_RESULT, score: 400, completedAt: `${day}T09:00:00.000Z` });
+  }
+  assert.ok(streak.badges["three-day-streak"], "three consecutive days earn the streak badge");
+  assert.ok(streak.badges["star-collector"], "1000+ total stars earn the collector badge");
+  assert.equal(streak.badges["first-flight"], first.badges["first-flight"], "earned timestamps do not change");
 });
 
 test("course progress stops at the final session", () => {

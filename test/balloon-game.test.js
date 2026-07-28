@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   BALLOON_EXPLOSION_SECONDS,
+  BASE_SPAWN_INTERVAL,
+  MIN_SPAWN_INTERVAL,
   PROJECTILE_FLIGHT_SECONDS,
   createBalloonRound,
   shootBalloon,
   spawnBalloon,
+  spawnIntervalFor,
+  speedMultiplierFor,
   updateBalloonRound,
 } from "../src/balloon-game.js";
 
@@ -79,4 +83,28 @@ test("pressing a key without a matching balloon does not spend a shot", () => {
   assert.equal(result.shot, false);
   assert.equal(result.round.shots, 0);
   assert.equal(result.round.hits, 0);
+});
+
+test("the defense ramps up: balloons spawn faster and fall faster over time", () => {
+  assert.equal(spawnIntervalFor(0), BASE_SPAWN_INTERVAL);
+  assert.ok(spawnIntervalFor(15) < BASE_SPAWN_INTERVAL);
+  assert.equal(spawnIntervalFor(600), MIN_SPAWN_INTERVAL, "spawn interval never drops below the floor");
+  assert.equal(speedMultiplierFor(0), 1);
+  assert.ok(speedMultiplierFor(20) > 1);
+  assert.equal(speedMultiplierFor(600), 1.5, "fall speed is capped at 1.5x");
+
+  const early = spawnBalloon(createBalloonRound(["f"]), "f", () => 0.5);
+  const lateRound = { ...createBalloonRound(["f"]), elapsed: 30 };
+  const late = spawnBalloon(lateRound, "f", () => 0.5);
+  assert.ok(late.balloons[0].speed > early.balloons[0].speed);
+});
+
+test("a round tracks its stage target and elapsed time without its own score", () => {
+  const round = createBalloonRound(["f"], { targetHits: 8 });
+  assert.equal(round.targetHits, 8);
+  assert.equal(round.elapsed, 0);
+  assert.equal("score" in round, false, "stars only live in the session score");
+
+  const updated = updateBalloonRound(round, 1.5, () => 0.5);
+  assert.equal(updated.elapsed, 1.5);
 });

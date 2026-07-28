@@ -1,7 +1,8 @@
 export const BALLOON_FIELD_HEIGHT = 340;
 export const PROJECTILE_FLIGHT_SECONDS = 0.24;
 export const BALLOON_EXPLOSION_SECONDS = 0.36;
-const SPAWN_INTERVAL = 0.95;
+export const BASE_SPAWN_INTERVAL = 0.95;
+export const MIN_SPAWN_INTERVAL = 0.55;
 const BALLOON_SIZE = 54;
 const PROJECTILE_START_Y = BALLOON_FIELD_HEIGHT - 75;
 
@@ -18,7 +19,18 @@ function pickKey(keys, random) {
   return keys[Math.floor(safeRandom(random) * keys.length)] ?? "f";
 }
 
-export function createBalloonRound(keys, random = Math.random) {
+// 随小关时间推进，气球生成更快、下落更快，形成难度曲线。
+export function spawnIntervalFor(elapsedSeconds) {
+  const elapsed = Math.max(0, Number(elapsedSeconds) || 0);
+  return Math.max(MIN_SPAWN_INTERVAL, BASE_SPAWN_INTERVAL - elapsed * 0.012);
+}
+
+export function speedMultiplierFor(elapsedSeconds) {
+  const elapsed = Math.max(0, Number(elapsedSeconds) || 0);
+  return Math.min(1.5, 1 + elapsed * 0.012);
+}
+
+export function createBalloonRound(keys, { targetHits = 8, random = Math.random } = {}) {
   const playableKeys = [...new Set((keys ?? []).map(normalizeBalloonKey).filter(Boolean))];
   return {
     keys: playableKeys.length > 0 ? playableKeys : ["f", "j"],
@@ -30,7 +42,8 @@ export function createBalloonRound(keys, random = Math.random) {
     hits: 0,
     misses: 0,
     shots: 0,
-    score: 0,
+    targetHits: Math.max(1, Math.floor(Number(targetHits) || 8)),
+    elapsed: 0,
     shotFlash: 0,
     lastShotKey: "",
     projectiles: [],
@@ -49,7 +62,7 @@ export function spawnBalloon(round, key, random = Math.random) {
     key: normalized,
     x: 8 + safeRandom(random) * 84,
     y: -BALLOON_SIZE,
-    speed: 44 + safeRandom(random) * 28,
+    speed: (44 + safeRandom(random) * 28) * speedMultiplierFor(round.elapsed),
     size: BALLOON_SIZE,
   };
   return {
@@ -91,13 +104,14 @@ export function updateBalloonRound(round, elapsedSeconds, random = Math.random) 
     balloons,
     projectiles,
     misses: round.misses + misses,
+    elapsed: (round.elapsed ?? 0) + elapsed,
     spawnIn: round.spawnIn - elapsed,
     shotFlash: Math.max(0, round.shotFlash - elapsed),
     lastShotKey: round.shotFlash > 0 ? round.lastShotKey : "",
   };
   while (next.spawnIn <= 0) {
     next = spawnBalloon(next, pickKey(next.keys, random), random);
-    next.spawnIn += SPAWN_INTERVAL;
+    next.spawnIn += spawnIntervalFor(next.elapsed);
   }
   return next;
 }
@@ -132,7 +146,6 @@ export function shootBalloon(round, key) {
         : balloon),
       hits: round.hits + 1,
       shots: round.shots + 1,
-      score: round.score + 15,
       shotFlash: 0.18,
       lastShotKey: normalized,
       projectiles: [...(round.projectiles ?? []), projectile],

@@ -148,6 +148,25 @@ test("corrupt or oversized profile data falls back to safe bounded values", () =
   assert.equal(profile.history.length, 120);
 });
 
+test("stars, best score and badges round-trip and reject garbage", () => {
+  const storage = memoryStorage();
+  saveProfileData("kid-1", {
+    ...createProfile(),
+    totalStars: 1234,
+    bestScore: 456,
+    badges: {
+      "first-flight": "2026-07-01T09:00:00.000Z",
+      "made-up-badge": "2026-07-01T09:00:00.000Z",
+      "sharp-eyes": 12345,
+    },
+  }, storage);
+
+  const profile = loadProfileData("kid-1", storage);
+  assert.equal(profile.totalStars, 1234);
+  assert.equal(profile.bestScore, 456);
+  assert.deepEqual(Object.keys(profile.badges), ["first-flight"], "unknown ids and non-string dates are dropped");
+});
+
 test("history keeps stage counts and the counted flag", () => {
   const storage = memoryStorage({
     [profileStorageKey("kid-1")]: JSON.stringify({

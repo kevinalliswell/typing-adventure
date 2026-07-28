@@ -1,4 +1,5 @@
 import {
+  BADGES,
   COURSE_DAYS,
   DIFFICULTIES,
   HISTORY_LIMIT,
@@ -36,6 +37,16 @@ function sanitizeKeyStats(stats) {
   }));
 }
 
+const BADGE_IDS = new Set(BADGES.map((badge) => badge.id));
+
+function sanitizeBadges(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).flatMap(([id, earnedAt]) => {
+    if (!BADGE_IDS.has(id) || typeof earnedAt !== "string") return [];
+    return [[id, earnedAt.slice(0, 40)]];
+  }));
+}
+
 function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
   return history.slice(-HISTORY_LIMIT).flatMap((entry) => {
@@ -50,6 +61,7 @@ function sanitizeHistory(history) {
       completedStages: finiteInteger(entry.completedStages, 0, totalStages || 12),
       totalStages,
       counted: entry.counted === undefined ? true : entry.counted === true,
+      score: finiteInteger(entry.score, 0, 100000),
     }];
   });
 }
@@ -64,10 +76,13 @@ export function sanitizeProfile(value) {
     version: 1,
     completedSessions: finiteInteger(value.completedSessions, 0, MAX_SESSIONS),
     totalSeconds: Math.min(MAX_SESSIONS * MAX_SESSION_SECONDS, Math.max(0, Number(value.totalSeconds) || 0)),
+    totalStars: finiteInteger(value.totalStars, 0, 10000000),
+    bestScore: finiteInteger(value.bestScore, 0, 100000),
     difficultyId,
     sessionPlanId,
     audio: normalizeAudioSettings(value.audio),
     keyStats: sanitizeKeyStats(value.keyStats),
+    badges: sanitizeBadges(value.badges),
     history: sanitizeHistory(value.history),
   };
 }

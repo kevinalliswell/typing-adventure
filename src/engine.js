@@ -18,7 +18,7 @@ export const DIFFICULTIES = Object.freeze({
     description: "提示一直在身边，先把手指放稳",
     targetAccuracy: 0.86,
     hints: true,
-    hintAfterErrors: 1,
+    hintAfterErrors: 0,
   }),
   explorer: Object.freeze({
     id: "explorer",
@@ -27,7 +27,7 @@ export const DIFFICULTIES = Object.freeze({
     description: "提示会慢慢变少，准确又快",
     targetAccuracy: 0.92,
     hints: true,
-    hintAfterErrors: 2,
+    hintAfterErrors: 1,
   }),
   rocket: Object.freeze({
     id: "rocket",
@@ -39,6 +39,14 @@ export const DIFFICULTIES = Object.freeze({
     hintAfterErrors: 3,
   }),
 });
+
+// 目标键提示的显示规则：热身关常亮；其余小关错满 hintAfterErrors 次后出现。
+// gentle 的阈值是 0，等价于一直显示。
+export function isHintVisible(difficulty, stageType, currentErrors = 0) {
+  if (stageType === "warmup") return true;
+  const threshold = Math.max(0, Math.floor(Number(difficulty?.hintAfterErrors) || 0));
+  return Math.max(0, Number(currentErrors) || 0) >= threshold;
+}
 
 export const ACTIVITIES = Object.freeze([
   Object.freeze({ id: "star-scout", title: "找星星", icon: "✦", hint: "先找到亮起来的键" }),
@@ -150,10 +158,13 @@ export function createProfile() {
     version: 1,
     completedSessions: 0,
     totalSeconds: 0,
+    totalStars: 0,
+    bestScore: 0,
     difficultyId: "gentle",
     sessionPlanId: "standard",
     audio: { effectsEnabled: true, voiceEnabled: false, volume: 0.6 },
     keyStats: {},
+    badges: {},
     history: [],
   };
 }
@@ -262,13 +273,54 @@ function promptIncludesKey(prompt, key) {
   return prompt.toLowerCase().includes(key);
 }
 
-export function choosePrompt(lesson, profile, offset = 0) {
+export function choosePrompt(lesson, profile, offset = 0, previousPrompt = "") {
   const prompts = lesson.prompts;
+  const safeOffset = Number.isFinite(Number(offset)) ? Math.abs(Math.floor(Number(offset))) : 0;
   const weakest = getWeakestKey(profile, lesson.activeKeys);
   const matchingPrompts = weakest ? prompts.filter((prompt) => promptIncludesKey(prompt, weakest)) : prompts;
-  const candidates = matchingPrompts.length > 0 ? matchingPrompts : prompts;
-  const safeOffset = Number.isFinite(Number(offset)) ? Math.floor(Number(offset)) : 0;
-  return candidates[Math.abs(safeOffset) % candidates.length];
+  // 每第三条从全部题目里取，避免弱键过滤把整节课收窄成一两条题目。
+  const pool = safeOffset % 3 === 2 || matchingPrompts.length === 0 ? prompts : matchingPrompts;
+  const prompt = pool[safeOffset % pool.length];
+  if (prompt === previousPrompt && pool.length > 1) return pool[(safeOffset + 1) % pool.length];
+  return prompt;
+}
+
+export const BADGES = Object.freeze([
+  Object.freeze({ id: "first-flight", title: "首航星", icon: "✦", description: "完成第一次正式课次" }),
+  Object.freeze({ id: "sharp-eyes", title: "稳准小手", icon: "◎", description: "一次正式课次准确率达到 98%" }),
+  Object.freeze({ id: "star-collector", title: "星星收藏家", icon: "✧", description: "累计收集 1000 颗星星" }),
+  Object.freeze({ id: "three-day-streak", title: "连飞三天", icon: "➹", description: "连续 3 天完成正式课次" }),
+  Object.freeze({ id: "home-row-hero", title: "家排小英雄", icon: "⌂", description: "完成第一周的家排课程" }),
+  Object.freeze({ id: "graduate", title: "毕业星光", icon: "★", description: "完成全部 84 次课程" }),
+]);
+
+function hasConsecutiveDays(entries, requiredDays) {
+  const days = [...new Set(entries
+    .map((entry) => typeof entry.completedAt === "string" ? entry.completedAt.slice(0, 10) : "")
+    .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day)))].sort();
+  if (requiredDays <= 1) return days.length > 0;
+  let streak = 1;
+  for (let index = 1; index < days.length; index += 1) {
+    const gap = (Date.parse(`${days[index]}T00:00:00Z`) - Date.parse(`${days[index - 1]}T00:00:00Z`)) / 86400000;
+    streak = gap === 1 ? streak + 1 : 1;
+    if (streak >= requiredDays) return true;
+  }
+  return false;
+}
+
+export function evaluateBadges(profile, earnedAt = new Date().toISOString()) {
+  const earned = { ...(profile.badges ?? {}) };
+  const countedEntries = (profile.history ?? []).filter((entry) => entry.counted !== false);
+  const award = (id, condition) => {
+    if (!earned[id] && condition) earned[id] = earnedAt;
+  };
+  award("first-flight", profile.completedSessions >= 1);
+  award("sharp-eyes", countedEntries.some((entry) => entry.accuracy >= 0.98));
+  award("star-collector", (profile.totalStars ?? 0) >= 1000);
+  award("three-day-streak", hasConsecutiveDays(countedEntries, 3));
+  award("home-row-hero", profile.completedSessions >= 14);
+  award("graduate", profile.completedSessions >= COURSE_DAYS * SESSIONS_PER_DAY);
+  return earned;
 }
 
 export function completeSession(profile, result = {}) {
@@ -277,25 +329,31 @@ export function completeSession(profile, result = {}) {
   const elapsedSeconds = Math.min(MAX_SESSION_SECONDS, Math.max(0, Number(result.elapsedSeconds) || 0));
   const totalStages = Math.min(12, Math.max(1, Math.floor(Number(result.totalStages) || 1)));
   const completedStages = Math.min(totalStages, Math.max(0, Math.floor(Number(result.completedStages) || 0)));
+  const score = Math.min(100000, Math.max(0, Math.floor(Number(result.score) || 0)));
   const counted = isCountedSession(completedStages, totalStages);
+  const completedAt = result.completedAt ?? null;
   const historyEntry = {
     dayNumber: plan.dayNumber,
     sessionNumber: plan.sessionNumber,
     accuracy,
     elapsedSeconds,
-    completedAt: result.completedAt ?? null,
+    completedAt,
     completedStages,
     totalStages,
     counted,
+    score,
   };
-  return {
+  const next = {
     ...profile,
     completedSessions: counted
       ? Math.min(COURSE_DAYS * SESSIONS_PER_DAY, profile.completedSessions + 1)
       : profile.completedSessions,
     totalSeconds: profile.totalSeconds + elapsedSeconds,
+    totalStars: (profile.totalStars ?? 0) + score,
+    bestScore: counted ? Math.max(profile.bestScore ?? 0, score) : (profile.bestScore ?? 0),
     history: [...profile.history, historyEntry].slice(-HISTORY_LIMIT),
   };
+  return { ...next, badges: evaluateBadges(next, completedAt ?? undefined) };
 }
 
 export function getCourseProgress(profile) {
