@@ -25,13 +25,11 @@
 }
 
 html {
-  min-width: 320px;
   background: var(--paper);
 }
 
 body {
   margin: 0;
-  min-width: 320px;
   min-height: 100vh;
   background: var(--paper);
   color: var(--ink);
