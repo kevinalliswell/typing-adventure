@@ -128,8 +128,6 @@ function createLesson(spec, dayNumber, activeKeys, newKeys) {
     newKeys: Object.freeze([...newKeys]),
     activeKeys: Object.freeze([...activeKeys]),
     prompts: Object.freeze([...prompts]),
-    warmupMinutes: 5,
-    missionMinutes: 15,
   });
 }
 
