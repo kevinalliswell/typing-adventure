@@ -1,4 +1,4 @@
-import { DIFFICULTIES, KEY_ROWS, getCourseProgress, getDailyPlan, getMastery, normalizeKey } from "./engine.js";
+import { DIFFICULTIES, KEY_ROWS, SESSION_DURATION_MINUTES, getCourseProgress, getDailyPlan, getMastery, normalizeKey, normalizeSessionMinutes } from "./engine.js";
 import { requiresShift } from "./input.js";
 import { BALLOON_EXPLOSION_SECONDS, BALLOON_FIELD_HEIGHT, PROJECTILE_FLIGHT_SECONDS } from "./balloon-game.js";
 import { SESSION_GATES, getSessionProgress, shouldShowTargetHint } from "./session.js";
@@ -31,6 +31,23 @@ function renderAudioControls(profile) {
   return `<div class="audio-controls" aria-label="声音设置">
     <button class="audio-toggle ${audio.effectsEnabled ? "is-on" : ""}" type="button" data-action="toggle-effects" aria-pressed="${audio.effectsEnabled}" aria-label="${audio.effectsEnabled ? "关闭音效" : "开启音效"}" title="${audio.effectsEnabled ? "关闭音效" : "开启音效"}">♫</button>
     <button class="audio-toggle ${audio.voiceEnabled ? "is-on" : ""}" type="button" data-action="toggle-voice" aria-pressed="${audio.voiceEnabled}" aria-label="${audio.voiceEnabled ? "关闭配音" : "开启配音"}" title="${audio.voiceEnabled ? "关闭配音" : "开启配音"}">声</button>
+  </div>`;
+}
+
+function renderParentSettingsDialog(pendingSessionMinutes) {
+  const selectedMinutes = normalizeSessionMinutes(pendingSessionMinutes);
+  return `<div class="modal-backdrop parent-settings-backdrop">
+    <section class="parent-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="parent-settings-title" aria-describedby="parent-settings-description" data-parent-settings-dialog>
+      <span class="parent-settings-orbit" aria-hidden="true">⚙</span>
+      <p class="eyebrow">PARENT SETTINGS</p>
+      <h2 id="parent-settings-title">家长设置</h2>
+      <p id="parent-settings-description">选择每次探险的最长时间。完成三关后仍会提前结束。</p>
+      <div class="duration-choice-grid" role="group" aria-label="单局最长时长">
+        ${SESSION_DURATION_MINUTES.map((minutes) => `<button class="duration-choice ${selectedMinutes === minutes ? "is-selected" : ""}" type="button" data-action="select-session-duration" data-session-minutes="${minutes}" aria-label="最长时长 ${minutes} 分钟" aria-pressed="${selectedMinutes === minutes}"><strong>${minutes}</strong><span>分钟</span>${minutes === 5 ? "<small>默认</small>" : ""}</button>`).join("")}
+      </div>
+      <p class="parent-settings-note">设置只保存在这台设备上，不会上传孩子的练习数据。</p>
+      <div class="dialog-actions"><button class="primary-action" type="button" data-action="save-parent-settings">保存设置</button><button class="secondary-action" type="button" data-action="cancel-parent-settings">取消</button></div>
+    </section>
   </div>`;
 }
 
@@ -68,12 +85,12 @@ function renderWeekMap(profile) {
   }).join("");
 }
 
-export function renderHome(profile) {
+export function renderHome(profile, { parentSettingsOpen = false, pendingSessionMinutes = profile.sessionMinutes } = {}) {
   const plan = getDailyPlan(profile);
   const progress = getCourseProgress(profile);
   const difficulty = DIFFICULTIES[profile.difficultyId];
   return `<main class="app-shell home-shell">
-    <header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools">${renderAudioControls(profile)}<div class="privacy-chip"><span aria-hidden="true">●</span> 本地保存</div></div></header>
+    <header class="topbar topbar--home">${renderBrand()}<div class="topbar-tools"><button class="parent-settings-action" type="button" data-action="open-parent-settings" aria-label="打开家长设置" aria-haspopup="dialog"><span aria-hidden="true">⚙</span><strong>家长设置</strong><small>${normalizeSessionMinutes(profile.sessionMinutes)} 分钟</small></button>${renderAudioControls(profile)}<div class="privacy-chip"><span aria-hidden="true">●</span> 本地保存</div></div></header>
     <section class="home-hero page-width">
       <div class="hero-copy">
         <p class="eyebrow">第 ${plan.dayNumber} 天 · 第 ${plan.sessionNumber} 次探险</p>
@@ -102,6 +119,7 @@ export function renderHome(profile) {
       <div class="difficulty-grid">${renderDifficulty(profile)}</div>
     </section>
     <footer class="site-footer page-width"><span>键盘星球 · 6 周成长航线</span><span>不需要账号，进度只在这台设备上</span></footer>
+    ${parentSettingsOpen ? renderParentSettingsDialog(pendingSessionMinutes) : ""}
   </main>`;
 }
 

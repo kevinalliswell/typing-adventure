@@ -1,12 +1,13 @@
 import {
   DIFFICULTIES,
-  SESSION_SECONDS,
   chooseActivityPrompt,
   completeSession,
   getDailyPlan,
   getActivityForPrompt,
   getLesson,
+  getSessionSeconds,
   normalizeKey,
+  normalizeSessionMinutes,
   recordKey,
 } from "./engine.js";
 import { getSessionProgress, shouldShowTargetHint } from "./session.js";
@@ -26,10 +27,12 @@ let run = null;
 let timerHandle = null;
 let balloonFrameHandle = null;
 let balloonLastFrame = 0;
+let parentSettingsOpen = false;
+let pendingSessionMinutes = profile.sessionMinutes;
 const sound = new SoundBoard(profile.audio);
 
 function render() {
-  if (screen === "home") app.innerHTML = renderHome(profile);
+  if (screen === "home") app.innerHTML = renderHome(profile, { parentSettingsOpen, pendingSessionMinutes });
   if (screen === "practice" && run) app.innerHTML = renderPractice(profile, run);
   if (screen === "result" && run?.result) app.innerHTML = renderResult(profile, run.result);
 }
@@ -103,6 +106,7 @@ function setActivity(nextActivity) {
 
 function createRun(plan, { countsTowardProgress = true } = {}) {
   const activity = getActivityForPrompt(0);
+  const sessionSeconds = getSessionSeconds(profile.sessionMinutes);
   const nextRun = {
     plan,
     originalPlan: {
@@ -124,7 +128,8 @@ function createRun(plan, { countsTowardProgress = true } = {}) {
     consecutiveErrors: 0,
     completedGates: 0,
     score: 0,
-    remainingSeconds: SESSION_SECONDS,
+    sessionSeconds,
+    remainingSeconds: sessionSeconds,
     lastFeedback: "ready",
     feedbackText: "星语已经准备好",
     lastPressed: "",
@@ -153,6 +158,7 @@ function refreshRunProgress({ announce = true } = {}) {
 function startPractice(planOverride = null, options = {}) {
   clearTimer();
   clearDraft();
+  parentSettingsOpen = false;
   sound.update(profile.audio);
   sound.unlock();
   const plan = planOverride ?? getDailyPlan(profile);
@@ -378,7 +384,7 @@ function finishPractice({ allowEmpty = false, completed = false, timedOut = fals
     profile = completeSession(profile, {
       completed: true,
       accuracy,
-      elapsedSeconds: SESSION_SECONDS - run.remainingSeconds,
+      elapsedSeconds: run.sessionSeconds - run.remainingSeconds,
       completedAt: new Date().toISOString(),
     });
   }
@@ -423,7 +429,7 @@ function clearTimer() {
 }
 
 function hasMeaningfulProgress() {
-  return Boolean(run && (run.total > 0 || run.remainingSeconds < SESSION_SECONDS - 10));
+  return Boolean(run && (run.total > 0 || run.remainingSeconds < run.sessionSeconds - 10));
 }
 
 function goHome({ force = false } = {}) {
@@ -440,7 +446,58 @@ function goHome({ force = false } = {}) {
   clearDraft();
   screen = "home";
   run = null;
+  parentSettingsOpen = false;
   render();
+}
+
+function focusPendingDuration() {
+  document.querySelector(`[data-session-minutes="${pendingSessionMinutes}"]`)?.focus();
+}
+
+function openParentSettings() {
+  if (screen !== "home") return;
+  pendingSessionMinutes = normalizeSessionMinutes(profile.sessionMinutes);
+  parentSettingsOpen = true;
+  render();
+  focusPendingDuration();
+}
+
+function selectSessionDuration(value) {
+  if (!parentSettingsOpen) return;
+  pendingSessionMinutes = normalizeSessionMinutes(value);
+  render();
+  focusPendingDuration();
+}
+
+function closeParentSettings() {
+  if (!parentSettingsOpen) return;
+  parentSettingsOpen = false;
+  pendingSessionMinutes = profile.sessionMinutes;
+  render();
+  document.querySelector('[data-action="open-parent-settings"]')?.focus();
+}
+
+function saveParentSettings() {
+  if (!parentSettingsOpen) return;
+  profile = { ...profile, sessionMinutes: normalizeSessionMinutes(pendingSessionMinutes) };
+  saveProfile(profile);
+  closeParentSettings();
+}
+
+function trapParentSettingsFocus(event) {
+  if (event.key !== "Tab") return;
+  const dialog = document.querySelector("[data-parent-settings-dialog]");
+  const focusable = [...(dialog?.querySelectorAll("button:not(:disabled)") ?? [])];
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function updateDifficulty(id) {
@@ -489,6 +546,7 @@ function saveDraft() {
         consecutiveErrors: run.consecutiveErrors,
         completedGates: run.completedGates,
         score: run.score,
+        sessionSeconds: run.sessionSeconds,
         remainingSeconds: run.remainingSeconds,
         lastFeedback: run.lastFeedback,
         feedbackText: run.feedbackText,
@@ -531,6 +589,10 @@ function restoreDraft() {
   const plan = { dayNumber, sessionNumber, totalSessions: 84, lesson };
   const baseRun = createRun(plan, { countsTowardProgress: Boolean(draft.countsTowardProgress) });
   const state = draft.state ?? {};
+  const sessionSeconds = state.sessionSeconds === undefined
+    ? baseRun.sessionSeconds
+    : getSessionSeconds(Number(state.sessionSeconds) / 60);
+  const savedRemainingSeconds = Number(state.remainingSeconds);
   run = {
     ...baseRun,
     difficultyId: Object.hasOwn(DIFFICULTIES, state.difficultyId) ? state.difficultyId : baseRun.difficultyId,
@@ -546,7 +608,8 @@ function restoreDraft() {
     consecutiveErrors: Math.max(0, Number(state.consecutiveErrors) || 0),
     completedGates: Math.max(0, Math.min(3, Number(state.completedGates) || 0)),
     score: Math.max(0, Number(state.score) || 0),
-    remainingSeconds: Math.min(SESSION_SECONDS, Math.max(0, Number(state.remainingSeconds) || SESSION_SECONDS)),
+    sessionSeconds,
+    remainingSeconds: Math.min(sessionSeconds, Math.max(0, Number.isFinite(savedRemainingSeconds) ? savedRemainingSeconds : sessionSeconds)),
     lastFeedback: typeof state.lastFeedback === "string" ? state.lastFeedback : "ready",
     feedbackText: typeof state.feedbackText === "string" ? state.feedbackText : "星语继续前进",
     announcement: typeof state.announcement === "string" ? state.announcement : "继续未完成的探险",
@@ -563,7 +626,8 @@ function restoreDraft() {
 }
 
 app.addEventListener("click", (event) => {
-  const action = event.target.closest("[data-action]")?.dataset.action;
+  const actionElement = event.target.closest("[data-action]");
+  const action = actionElement?.dataset.action;
   if (!action) return;
   if (action === "start") startPractice();
   if (action === "pause") pausePractice();
@@ -573,11 +637,22 @@ app.addEventListener("click", (event) => {
   if (action === "retry") retryCompletedSession();
   if (action === "continue") continueToNextSession();
   if (action === "difficulty") updateDifficulty(event.target.closest("[data-difficulty]").dataset.difficulty);
+  if (action === "open-parent-settings") openParentSettings();
+  if (action === "select-session-duration") selectSessionDuration(actionElement.dataset.sessionMinutes);
+  if (action === "save-parent-settings") saveParentSettings();
+  if (action === "cancel-parent-settings") closeParentSettings();
   if (action === "toggle-effects") toggleAudioSetting("effectsEnabled");
   if (action === "toggle-voice") toggleAudioSetting("voiceEnabled");
 });
 
-window.addEventListener("keydown", acceptKey);
+window.addEventListener("keydown", (event) => {
+  if (parentSettingsOpen) {
+    if (event.key === "Escape") closeParentSettings();
+    else trapParentSettingsFocus(event);
+    return;
+  }
+  acceptKey(event);
+});
 window.addEventListener("visibilitychange", () => {
   if (document.hidden && screen === "practice" && run && !run.paused) pausePractice();
 });

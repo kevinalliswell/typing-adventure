@@ -1,6 +1,17 @@
-export const SESSION_SECONDS = 20 * 60;
+export const SESSION_DURATION_MINUTES = Object.freeze([5, 10, 15]);
+export const DEFAULT_SESSION_MINUTES = 5;
+export const MAX_SESSION_SECONDS = 15 * 60;
 export const COURSE_DAYS = 42;
 export const SESSIONS_PER_DAY = 2;
+
+export function normalizeSessionMinutes(value) {
+  const minutes = Number(value);
+  return SESSION_DURATION_MINUTES.includes(minutes) ? minutes : DEFAULT_SESSION_MINUTES;
+}
+
+export function getSessionSeconds(value = DEFAULT_SESSION_MINUTES) {
+  return normalizeSessionMinutes(value) * 60;
+}
 
 export const DIFFICULTIES = Object.freeze({
   gentle: Object.freeze({
@@ -141,6 +152,7 @@ export function createProfile() {
     completedSessions: 0,
     totalSeconds: 0,
     difficultyId: "gentle",
+    sessionMinutes: DEFAULT_SESSION_MINUTES,
     audio: { effectsEnabled: true, voiceEnabled: false, volume: 0.6 },
     keyStats: {},
     history: [],
@@ -245,7 +257,7 @@ export function completeSession(profile, result = {}) {
   if (result.completed !== true) return profile;
   const plan = getDailyPlan(profile);
   const accuracy = Math.min(1, Math.max(0, Number(result.accuracy) || 0));
-  const elapsedSeconds = Math.min(SESSION_SECONDS, Math.max(0, Number(result.elapsedSeconds) || 0));
+  const elapsedSeconds = Math.min(MAX_SESSION_SECONDS, Math.max(0, Number(result.elapsedSeconds) || 0));
   const historyEntry = {
     dayNumber: plan.dayNumber,
     sessionNumber: plan.sessionNumber,

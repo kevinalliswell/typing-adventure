@@ -1,4 +1,4 @@
-import { COURSE_DAYS, DIFFICULTIES, SESSIONS_PER_DAY, createProfile } from "./engine.js";
+import { COURSE_DAYS, DIFFICULTIES, SESSIONS_PER_DAY, createProfile, normalizeSessionMinutes } from "./engine.js";
 import { normalizeAudioSettings } from "./audio.js";
 
 export const STORAGE_KEY = "typing-adventure:profile";
@@ -45,6 +45,7 @@ export function sanitizeProfile(value) {
     completedSessions: finiteInteger(value.completedSessions, 0, MAX_SESSIONS),
     totalSeconds: Math.min(MAX_SESSIONS * 20 * 60, Math.max(0, Number(value.totalSeconds) || 0)),
     difficultyId,
+    sessionMinutes: normalizeSessionMinutes(value.sessionMinutes),
     audio: normalizeAudioSettings(value.audio),
     keyStats: sanitizeKeyStats(value.keyStats),
     history: sanitizeHistory(value.history),

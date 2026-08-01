@@ -5,7 +5,9 @@ import {
   COURSE,
   DIFFICULTIES,
   ACTIVITIES,
+  DEFAULT_SESSION_MINUTES,
   KEY_ROWS,
+  SESSION_DURATION_MINUTES,
   choosePrompt,
   chooseActivityPrompt,
   completeSession,
@@ -15,9 +17,19 @@ import {
   getDailyPlan,
   getLesson,
   getPromptKeys,
+  getSessionSeconds,
   getWeakestKey,
   recordKey,
 } from "../src/engine.js";
+
+test("session duration defaults to five minutes and only accepts parent presets", () => {
+  assert.equal(createProfile().sessionMinutes, DEFAULT_SESSION_MINUTES);
+  assert.deepEqual(SESSION_DURATION_MINUTES, [5, 10, 15]);
+  assert.equal(getSessionSeconds(5), 300);
+  assert.equal(getSessionSeconds(10), 600);
+  assert.equal(getSessionSeconds(15), 900);
+  assert.equal(getSessionSeconds(20), 300);
+});
 
 test("the summer course has 42 daily lessons with two sessions per day", () => {
   assert.equal(COURSE.length, 42);

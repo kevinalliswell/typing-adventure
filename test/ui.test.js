@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createProfile, getActivityForPrompt, getDailyPlan } from "../src/engine.js";
-import { renderKeyboard, renderPractice, renderResult } from "../src/ui.js";
+import { renderHome, renderKeyboard, renderPractice, renderResult } from "../src/ui.js";
 
 function practiceRun(profile, overrides = {}) {
   const plan = getDailyPlan(profile);
@@ -30,6 +30,20 @@ function practiceRun(profile, overrides = {}) {
     ...overrides,
   };
 }
+
+test("home exposes an accessible parent duration dialog with a pending selection", () => {
+  const profile = createProfile();
+  const closed = renderHome(profile);
+  const open = renderHome(profile, { parentSettingsOpen: true, pendingSessionMinutes: 10 });
+
+  assert.match(closed, /data-action="open-parent-settings"/);
+  assert.match(closed, /aria-label="打开家长设置"/);
+  assert.doesNotMatch(closed, /role="dialog"/);
+  assert.match(open, /role="dialog"/);
+  assert.match(open, /aria-label="最长时长 10 分钟"[^>]*aria-pressed="true"/);
+  assert.match(open, /data-action="save-parent-settings"/);
+  assert.match(open, /data-action="cancel-parent-settings"/);
+});
 
 test("the on-screen keyboard renders taught home-row and punctuation keys", () => {
   const profile = createProfile();

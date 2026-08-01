@@ -68,6 +68,26 @@ test("one correct key and an early finish save practice without advancing", asyn
   expect((await storedProfile(page)).completedSessions).toBe(0);
 });
 
+test("parent settings persist a ten-minute maximum for the next session", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "打开家长设置" }).click();
+  await expect(page.getByRole("dialog", { name: "家长设置" })).toBeVisible();
+  await page.getByRole("button", { name: "最长时长 10 分钟" }).click();
+  await page.getByRole("button", { name: "保存设置" }).click();
+
+  await page.reload();
+  await page.getByRole("button", { name: "打开家长设置" }).click();
+  await expect(page.getByRole("button", { name: "最长时长 10 分钟" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "取消" }).click();
+  await page.getByRole("button", { name: "开始今天的探险" }).click();
+  await expect(page.locator("#timer-value")).toHaveText("10:00");
+});
+
+test("a new child starts with a five-minute maximum", async ({ page }) => {
+  await startPractice(page);
+  await expect(page.locator("#timer-value")).toHaveText("05:00");
+});
+
 test("a zero-input timeout saves an incomplete result without advancing", async ({ page }) => {
   await page.addInitScript((draftKey) => {
     sessionStorage.setItem(draftKey, JSON.stringify({
