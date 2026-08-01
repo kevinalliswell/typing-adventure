@@ -17,15 +17,24 @@ async function pressCurrentCharacter(page) {
   return displayed === "·" ? "space" : displayed.toLowerCase();
 }
 
+async function shootVisibleBalloon(page) {
+  const balloon = page.locator(".falling-balloon:not(.is-exploding) b").first();
+  await expect(balloon).toBeVisible({ timeout: 10000 });
+  await page.keyboard.press((await balloon.textContent()).toLowerCase());
+}
+
 async function clearCurrentStation(page) {
   const count = page.locator("#activity-count");
   const countBefore = await count.textContent();
+  const stationBefore = Number(countBefore.match(/第 (\d+) 站/)?.[1]);
   const activity = await page.locator("#activity-title").textContent();
 
   if (activity === "气球防线") {
-    const balloon = page.locator(".falling-balloon:not(.is-exploding) b").first();
-    await expect(balloon).toBeVisible({ timeout: 10000 });
-    await page.keyboard.press((await balloon.textContent()).toLowerCase());
+    for (let hits = 0; hits < 8; hits += 1) {
+      const currentStation = Number((await count.textContent()).match(/第 (\d+) 站/)?.[1]);
+      if (currentStation !== stationBefore) break;
+      await shootVisibleBalloon(page);
+    }
   } else {
     for (let characters = 0; characters < 40; characters += 1) {
       if (await page.locator(".result-shell").count()) break;
@@ -34,11 +43,12 @@ async function clearCurrentStation(page) {
     }
   }
 
-  await page.waitForFunction((previousCount) => {
+  await page.waitForFunction((previousStation) => {
     const result = document.querySelector(".result-shell");
-    const currentCount = document.querySelector("#activity-count")?.textContent;
-    return Boolean(result) || currentCount !== previousCount;
-  }, countBefore);
+    const currentCount = document.querySelector("#activity-count")?.textContent ?? "";
+    const currentStation = Number(currentCount.match(/第 (\d+) 站/)?.[1]);
+    return Boolean(result) || currentStation !== previousStation;
+  }, stationBefore);
 }
 
 async function completeThreeGates(page) {
@@ -115,6 +125,38 @@ test("a zero-input timeout saves an incomplete result without advancing", async 
   expect((await storedProfile(page)).completedSessions).toBe(0);
 });
 
+test("a legacy draft uses the current parent duration and caps its remaining time", async ({ page }) => {
+  await page.addInitScript(({ storageKey, draftKey }) => {
+    localStorage.setItem(storageKey, JSON.stringify({
+      version: 1,
+      completedSessions: 0,
+      difficultyId: "gentle",
+      sessionMinutes: 10,
+      audio: { effectsEnabled: false, voiceEnabled: false, volume: 0.6 },
+      keyStats: {},
+      history: [],
+    }));
+    sessionStorage.setItem(draftKey, JSON.stringify({
+      version: 1,
+      savedAt: Date.now(),
+      plan: { dayNumber: 1, sessionNumber: 1 },
+      countsTowardProgress: true,
+      state: {
+        difficultyId: "gentle",
+        prompt: "fjfjfj",
+        activityIndex: 0,
+        completedPrompts: 0,
+        remainingSeconds: 1200,
+      },
+    }));
+  }, { storageKey: STORAGE_KEY, draftKey: DRAFT_KEY });
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await page.goto("/");
+
+  await expect(page.locator("#timer-value")).toHaveText("10:00");
+});
+
 test("three gates rotate all activities and advance formal progress once", async ({ page }) => {
   await startPractice(page);
   const activities = await completeThreeGates(page);
@@ -135,6 +177,25 @@ test("a missed balloon becomes an error in the live and saved key stats", async 
   const savedErrors = Object.values((await storedProfile(page)).keyStats)
     .reduce((total, stats) => total + stats.errors, 0);
   expect(savedErrors).toBeGreaterThanOrEqual(1);
+});
+
+test("a balloon station waits for eight hits before advancing", async ({ page }) => {
+  await startPractice(page);
+  await clearCurrentStation(page);
+  await clearCurrentStation(page);
+  await expect(page.locator("#activity-title")).toHaveText("气球防线");
+  const station = page.locator("#activity-count");
+  await expect(station).toHaveText("第 3 站 · 0 / 8");
+
+  await shootVisibleBalloon(page);
+  await expect(station).toHaveText("第 3 站 · 1 / 8");
+  await expect(page.locator(".balloon-field__stats")).toContainText("本小站 1 / 8");
+  await page.getByRole("button", { name: "暂停练习" }).click();
+  await page.getByRole("button", { name: "继续飞行" }).click();
+  await expect(station).toHaveText("第 3 站 · 1 / 8");
+
+  for (let hit = 1; hit < 8; hit += 1) await shootVisibleBalloon(page);
+  await expect(station).toContainText("第 4 站");
 });
 
 test("retry repeats the completed lesson without advancing progress again", async ({ page }) => {

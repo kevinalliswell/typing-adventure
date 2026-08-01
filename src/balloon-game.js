@@ -1,9 +1,19 @@
 export const BALLOON_FIELD_HEIGHT = 340;
+export const BALLOON_HITS_PER_STATION = 8;
 export const PROJECTILE_FLIGHT_SECONDS = 0.24;
 export const BALLOON_EXPLOSION_SECONDS = 0.36;
 const SPAWN_INTERVAL = 0.95;
 const BALLOON_SIZE = 54;
 const PROJECTILE_START_Y = BALLOON_FIELD_HEIGHT - 75;
+
+export function advanceBalloonStation(currentHits = 0) {
+  const numericHits = Number(currentHits);
+  const safeHits = Number.isFinite(numericHits) ? Math.min(BALLOON_HITS_PER_STATION - 1, Math.max(0, Math.floor(numericHits))) : 0;
+  const nextHits = safeHits + 1;
+  return nextHits >= BALLOON_HITS_PER_STATION
+    ? { hits: 0, complete: true }
+    : { hits: nextHits, complete: false };
+}
 
 function safeRandom(random) {
   const value = Number(random?.());

@@ -1,6 +1,6 @@
 import { DIFFICULTIES, KEY_ROWS, SESSION_DURATION_MINUTES, getCourseProgress, getDailyPlan, getMastery, normalizeKey, normalizeSessionMinutes } from "./engine.js";
 import { requiresShift } from "./input.js";
-import { BALLOON_EXPLOSION_SECONDS, BALLOON_FIELD_HEIGHT, PROJECTILE_FLIGHT_SECONDS } from "./balloon-game.js";
+import { BALLOON_EXPLOSION_SECONDS, BALLOON_FIELD_HEIGHT, BALLOON_HITS_PER_STATION, PROJECTILE_FLIGHT_SECONDS } from "./balloon-game.js";
 import { SESSION_GATES, getSessionProgress, shouldShowTargetHint } from "./session.js";
 
 export function escapeHtml(value) {
@@ -174,7 +174,7 @@ export function renderKeyboard(lesson, profile, expected, lastPressed = "") {
   </div>`;
 }
 
-export function renderBalloonArena(round) {
+export function renderBalloonArena(round, stationHits = 0) {
   const safeRound = round ?? {
     balloons: [],
     hits: 0,
@@ -183,6 +183,7 @@ export function renderBalloonArena(round) {
     shotFlash: 0,
     height: BALLOON_FIELD_HEIGHT,
   };
+  const safeStationHits = Math.min(BALLOON_HITS_PER_STATION - 1, Math.max(0, Math.floor(Number(stationHits) || 0)));
   const sparkAngles = [0, 45, 90, 135, 180, 225, 270, 315];
   const balloons = safeRound.balloons.map((balloon) => {
     const isExploding = balloon.state === "exploding";
@@ -200,10 +201,10 @@ export function renderBalloonArena(round) {
     return `<span class="${classes.join(" ")}" style="left: ${balloon.x}%; top: ${balloon.y}px; --explosion-scale: ${1 + explosionProgress * 0.65}; --explosion-opacity: ${1 - explosionProgress}" aria-label="气球字母 ${escapeHtml(balloon.key.toUpperCase())}${isExploding ? "，正在爆炸" : ""}"><b>${escapeHtml(balloon.key.toUpperCase())}</b><i></i>${isExploding ? `<span class="balloon-explosion" aria-hidden="true">${sparks}</span>` : ""}</span>`;
   }).join("");
   const projectiles = (safeRound.projectiles ?? []).map((projectile) => `<span class="energy-projectile" style="left: ${projectile.x}%; top: ${projectile.y}px" aria-hidden="true"><i></i></span>`).join("");
-  return `<div class="balloon-field" style="--field-height: ${safeRound.height}px" role="img" aria-label="气球防线：击落 ${safeRound.hits} 个，漏掉 ${safeRound.misses} 个">
+  return `<div class="balloon-field" style="--field-height: ${safeRound.height}px" role="img" aria-label="气球防线：本小站 ${safeStationHits} / ${BALLOON_HITS_PER_STATION}，本段击落 ${safeRound.hits} 个，漏掉 ${safeRound.misses} 个">
     <div class="balloon-cloud balloon-cloud--one" aria-hidden="true"></div><div class="balloon-cloud balloon-cloud--two" aria-hidden="true"></div>
-    <div class="balloon-field__title"><span>气球防线</span><small>按字母发射能量弹</small></div>
-    <div class="balloon-field__stats"><span>击落 <strong>${safeRound.hits}</strong></span><span>漏掉 <strong>${safeRound.misses}</strong></span><span>星星 <strong>${safeRound.score}</strong></span></div>
+    <div class="balloon-field__title"><span>气球防线</span><small>每站击中 ${BALLOON_HITS_PER_STATION} 颗过关</small></div>
+    <div class="balloon-field__stats"><span>本小站 <strong>${safeStationHits} / ${BALLOON_HITS_PER_STATION}</strong></span><span>本段击落 <strong>${safeRound.hits}</strong></span><span>漏掉 <strong>${safeRound.misses}</strong></span><span>星星 <strong>${safeRound.score}</strong></span></div>
     <div class="balloon-layer">${balloons}</div>
     <div class="projectile-layer">${projectiles}</div>
     <div class="launcher ${safeRound.shotFlash > 0 ? "is-firing" : ""}" aria-hidden="true"><span class="launcher-muzzle"></span><span class="launcher-bolt">✦</span><div class="launcher-barrel"></div><div class="launcher-base"><span>键盘炮台</span></div></div>
@@ -249,6 +250,9 @@ export function renderPractice(profile, run) {
   const showTargetHint = shouldShowTargetHint(difficulty, progress.gateIndex, run.consecutiveErrors);
   const expected = run.prompt[run.typed.length] ?? "";
   const balloonActive = run.activity.id === "balloon-defense";
+  const activityCount = balloonActive
+    ? `第 ${run.completedPrompts + 1} 站 · ${run.balloonStationHits ?? 0} / ${BALLOON_HITS_PER_STATION}`
+    : `第 ${run.completedPrompts + 1} 站`;
   const accuracy = run.total === 0 ? "--" : `${Math.round((run.correct / run.total) * 100)}%`;
   return `<main class="app-shell practice-shell ${run.paused ? "is-paused" : ""}" data-feedback="${run.lastFeedback}">
     <header class="topbar topbar--practice page-width">
@@ -264,10 +268,10 @@ export function renderPractice(profile, run) {
         <div class="lesson-title-row"><div><p class="eyebrow">${escapeHtml(run.lesson.phase)}</p><h1 id="practice-title">${escapeHtml(run.lesson.title)}</h1></div><span class="mission-star" aria-hidden="true">✦</span></div>
         <p class="lesson-story">${escapeHtml(run.lesson.story)}</p>
         ${renderGateProgress(run, difficulty)}
-        <div class="activity-banner activity-banner--${run.activity.id}" id="activity-banner" aria-live="polite"><span class="activity-banner__icon" id="activity-icon" aria-hidden="true">${escapeHtml(run.activity.icon)}</span><div><span class="activity-banner__label">当前玩法</span><strong id="activity-title">${escapeHtml(run.activity.title)}</strong><p id="activity-hint">${escapeHtml(run.activity.hint)}</p></div><span class="activity-banner__count" id="activity-count">第 ${run.completedPrompts + 1} 站</span></div>
+        <div class="activity-banner activity-banner--${run.activity.id}" id="activity-banner" aria-live="polite"><span class="activity-banner__icon" id="activity-icon" aria-hidden="true">${escapeHtml(run.activity.icon)}</span><div><span class="activity-banner__label">当前玩法</span><strong id="activity-title">${escapeHtml(run.activity.title)}</strong><p id="activity-hint">${escapeHtml(run.activity.hint)}</p></div><span class="activity-banner__count" id="activity-count">${activityCount}</span></div>
         <div class="flight-track" aria-label="本次任务进度"><span class="track-line"></span><span class="track-fill" id="track-fill" style="width: ${Math.min(100, (run.completedPrompts / 10) * 100)}%"></span><span class="track-planet" id="track-planet" style="left: ${Math.min(94, 4 + (run.completedPrompts / 10) * 90)}%">✦</span><span class="track-label" id="track-label">${run.completedPrompts} / 10 小站</span></div>
         <div class="target-panel activity-stage activity-stage--${run.activity.id}" id="typing-target-panel" ${balloonActive ? "hidden" : ""}>${renderActivityScene(run.activity, run)}<span class="target-label">当前星语</span><div class="target-sequence" id="target-sequence" aria-label="目标文字">${renderTarget(run.prompt, run.typed, run.lastFeedback)}</div><span class="target-caption">目标中的 · 代表空格</span><input id="keyboard-capture" class="keyboard-capture" aria-label="键盘练习输入区" autocomplete="off" autocapitalize="off" spellcheck="false" /></div>
-        <div id="balloon-arena" ${balloonActive ? "" : "hidden"}>${renderBalloonArena(run.balloonRound)}</div>
+        <div id="balloon-arena" ${balloonActive ? "" : "hidden"}>${renderBalloonArena(run.balloonRound, run.balloonStationHits)}</div>
         <div class="feedback-line feedback-line--${run.lastFeedback}" id="feedback-line" role="status">${escapeHtml(run.feedbackText)}</div>
         <div class="live-stats" aria-label="本次练习统计"><div><span>准确率</span><strong id="accuracy-value">${accuracy}</strong></div><div><span>连续正确</span><strong id="streak-value">${run.streak}<small> 次</small></strong></div><div><span>星星</span><strong id="score-value">${run.score}</strong></div></div>
         <button class="finish-action" type="button" data-action="finish" ${run.total === 0 ? "disabled" : ""}>结束并保存本次练习</button>

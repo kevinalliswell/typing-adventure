@@ -11,7 +11,7 @@ import {
   recordKey,
 } from "./engine.js";
 import { getSessionProgress, shouldShowTargetHint } from "./session.js";
-import { createBalloonRound, shootBalloon, updateBalloonRound } from "./balloon-game.js";
+import { BALLOON_HITS_PER_STATION, advanceBalloonStation, createBalloonRound, shootBalloon, updateBalloonRound } from "./balloon-game.js";
 import { isCorrectInput, isIgnoredKey, requiresShift } from "./input.js";
 import { SoundBoard } from "./audio.js";
 import { loadProfile, saveProfile } from "./storage.js";
@@ -93,7 +93,7 @@ function balloonFrame(now) {
 
 function updateBalloonView() {
   const arena = document.querySelector("#balloon-arena");
-  if (arena && run?.balloonRound) arena.innerHTML = renderBalloonArena(run.balloonRound);
+  if (arena && run?.balloonRound) arena.innerHTML = renderBalloonArena(run.balloonRound, run.balloonStationHits);
 }
 
 function setActivity(nextActivity) {
@@ -120,6 +120,7 @@ function createRun(plan, { countsTowardProgress = true } = {}) {
     promptIndex: 0,
     activity,
     completedPrompts: 0,
+    balloonStationHits: 0,
     typed: "",
     correct: 0,
     errors: 0,
@@ -222,7 +223,9 @@ function updatePracticeView() {
   setText("#activity-icon", run.activity.icon);
   setText("#activity-title", run.activity.title);
   setText("#activity-hint", run.activity.hint);
-  setText("#activity-count", `第 ${run.completedPrompts + 1} 站`);
+  setText("#activity-count", balloonActive
+    ? `第 ${run.completedPrompts + 1} 站 · ${run.balloonStationHits} / ${BALLOON_HITS_PER_STATION}`
+    : `第 ${run.completedPrompts + 1} 站`);
   const feedback = document.querySelector("#feedback-line");
   if (feedback) feedback.className = `feedback-line feedback-line--${run.lastFeedback}`;
   const finish = document.querySelector('[data-action="finish"]');
@@ -318,22 +321,29 @@ function handleBalloonInput(event) {
   saveProfile(profile);
   if (result.shot) {
     run.balloonRound = result.round;
-    run.completedPrompts += 1;
-    run.promptIndex += 1;
+    const stationProgress = advanceBalloonStation(run.balloonStationHits);
+    run.balloonStationHits = stationProgress.hits;
     run.correct += 1;
     run.streak += 1;
     run.consecutiveErrors = 0;
     run.score += 15;
     run.lastFeedback = "correct";
-    run.feedbackText = "命中！气球爆开了";
-    setActivity(getActivityForPrompt(run.completedPrompts));
-    run.prompt = chooseActivityPrompt(run.lesson, profile, run.activity, run.promptIndex);
     sound.launch();
     sound.explode();
-    sound.station();
-    if (run.completedPrompts % 4 === 0) sound.speak("小站到站，伸伸小手再出发");
-    else if (run.completedPrompts % 3 === 0) sound.speak(`${run.activity.title}，${run.activity.hint}`);
-    run.announcement = "命中气球";
+    if (stationProgress.complete) {
+      run.completedPrompts += 1;
+      run.promptIndex += 1;
+      setActivity(getActivityForPrompt(run.completedPrompts));
+      run.prompt = chooseActivityPrompt(run.lesson, profile, run.activity, run.promptIndex);
+      run.feedbackText = isBalloonActivity() ? "气球小站通过，继续守住下一波" : "气球防线完成，下一站出发";
+      sound.station();
+      if (run.completedPrompts % 4 === 0) sound.speak("小站到站，伸伸小手再出发");
+      else if (run.completedPrompts % 3 === 0) sound.speak(`${run.activity.title}，${run.activity.hint}`);
+      run.announcement = "气球小站通过";
+    } else {
+      run.feedbackText = `命中！本小站 ${run.balloonStationHits} / ${BALLOON_HITS_PER_STATION}`;
+      run.announcement = `命中气球，本小站 ${run.balloonStationHits} / ${BALLOON_HITS_PER_STATION}`;
+    }
   } else {
     run.errors += 1;
     run.streak = 0;
@@ -538,6 +548,7 @@ function saveDraft() {
         promptIndex: run.promptIndex,
         activityIndex: run.completedPrompts,
         completedPrompts: run.completedPrompts,
+        balloonStationHits: run.balloonStationHits,
         typed: run.typed,
         correct: run.correct,
         errors: run.errors,
@@ -600,6 +611,7 @@ function restoreDraft() {
     promptIndex: Math.max(0, Number(state.promptIndex) || 0),
     activity: getActivityForPrompt(Math.max(0, Number(state.activityIndex) || 0)),
     completedPrompts: Math.max(0, Number(state.completedPrompts) || 0),
+    balloonStationHits: Math.min(BALLOON_HITS_PER_STATION - 1, Math.max(0, Number(state.balloonStationHits) || 0)),
     typed: typeof state.typed === "string" ? state.typed : "",
     correct: Math.max(0, Number(state.correct) || 0),
     errors: Math.max(0, Number(state.errors) || 0),

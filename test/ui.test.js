@@ -86,6 +86,22 @@ test("each non-balloon activity renders a distinct stage class", () => {
   }
 });
 
+test("balloon practice shows station and segment hit progress", () => {
+  const profile = createProfile();
+  const run = practiceRun(profile, {
+    activity: getActivityForPrompt(2),
+    completedPrompts: 2,
+    balloonStationHits: 3,
+    balloonRound: { balloons: [], projectiles: [], hits: 5, misses: 1, score: 75, height: 340 },
+  });
+
+  const html = renderPractice(profile, run);
+
+  assert.match(html, /本小站 <strong>3 \/ 8<\/strong>/);
+  assert.match(html, /本段击落 <strong>5<\/strong>/);
+  assert.match(html, /第 3 站 · 3 \/ 8/);
+});
+
 test("result page separates an incomplete attempt from formal completion", () => {
   const profile = createProfile();
   const baseResult = {

@@ -3,12 +3,22 @@ import assert from "node:assert/strict";
 
 import {
   BALLOON_EXPLOSION_SECONDS,
+  BALLOON_HITS_PER_STATION,
   PROJECTILE_FLIGHT_SECONDS,
+  advanceBalloonStation,
   createBalloonRound,
   shootBalloon,
   spawnBalloon,
   updateBalloonRound,
 } from "../src/balloon-game.js";
+
+test("a balloon station advances only after the eighth hit", () => {
+  assert.equal(BALLOON_HITS_PER_STATION, 8);
+  assert.deepEqual(advanceBalloonStation(0), { hits: 1, complete: false });
+  assert.deepEqual(advanceBalloonStation(6), { hits: 7, complete: false });
+  assert.deepEqual(advanceBalloonStation(7), { hits: 0, complete: true });
+  assert.deepEqual(advanceBalloonStation(-10), { hits: 1, complete: false });
+});
 
 test("a balloon round starts with an empty field and safe defaults", () => {
   const round = createBalloonRound(["f", "j"]);
