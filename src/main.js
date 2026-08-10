@@ -97,7 +97,11 @@ function render() {
   }
 }
 
+// 触屏设备不聚焦隐藏输入框，避免唤起系统软键盘遮挡界面。
+const COARSE_POINTER = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+
 function focusCapture() {
+  if (COARSE_POINTER) return;
   document.querySelector("#keyboard-capture")?.focus();
 }
 
@@ -183,6 +187,7 @@ function createRun(plan, { countsTowardProgress = true } = {}) {
     stageMeta: { cars: 0, altitude: 0 },
     currentErrors: 0,
     promptHadError: false,
+    touchShift: false,
     prompt: stages[0].prompts[0],
     promptIndex: 0,
     typed: "",
@@ -253,7 +258,7 @@ function updatePracticeView() {
   if (strip) strip.innerHTML = renderActivityStrip(run);
   const hintVisible = isHintVisible(DIFFICULTIES[run.difficultyId], stage.type, run.currentErrors);
   const keyboard = document.querySelector("#keyboard-container");
-  if (keyboard) keyboard.innerHTML = renderKeyboard(run.lesson, profile, balloonActive || !hintVisible ? "" : expected, run.lastPressed);
+  if (keyboard) keyboard.innerHTML = renderKeyboard(run.lesson, profile, balloonActive || !hintVisible ? "" : expected, run.lastPressed, run.touchShift);
   setText("#accuracy-value", accuracy);
   setText("#streak-value", `${run.streak} 次`);
   setText("#score-value", String(run.score));
@@ -638,6 +643,23 @@ function createNewProfile() {
   sound.speak(`${result.profile.name}，欢迎来到键盘星球`);
 }
 
+// 屏幕键盘点按输入：触屏和鼠标也能玩。shift 键是"预备键"，
+// 点亮后下一个字母按大写发出。
+function pressVirtualKey(key) {
+  if (!run || screen !== "practice" || run.paused || run.resting) return;
+  if (key === "shift") {
+    run.touchShift = !run.touchShift;
+    updatePracticeView();
+    return;
+  }
+  let character = key === "space" ? " " : key;
+  if (run.touchShift) {
+    if (/^[a-z]$/.test(character)) character = character.toUpperCase();
+    run.touchShift = false;
+  }
+  acceptKey({ key: character, metaKey: false, ctrlKey: false, altKey: false, preventDefault() {} });
+}
+
 function chooseAvatar(target) {
   if (!target) return;
   document.querySelectorAll(".avatar-option").forEach((element) => {
@@ -758,6 +780,7 @@ function resumeDraft() {
     stageMeta: { cars: 0, altitude: 0 },
     currentErrors: 0,
     promptHadError: false,
+    touchShift: false,
     prompt,
     promptIndex: Math.max(0, Number(state.promptIndex) || 0),
     typed,
@@ -784,6 +807,11 @@ function resumeDraft() {
 }
 
 app.addEventListener("click", (event) => {
+  const virtualKey = event.target.closest(".keyboard-key")?.dataset.key;
+  if (virtualKey && screen === "practice") {
+    pressVirtualKey(virtualKey);
+    return;
+  }
   const action = event.target.closest("[data-action]")?.dataset.action;
   if (!action) return;
   if (action === "start") startPractice();

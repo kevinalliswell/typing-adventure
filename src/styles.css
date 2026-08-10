@@ -1046,14 +1046,43 @@ strong {
 }
 
 .practice-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.06fr) minmax(380px, 0.94fr);
-  gap: 28px;
-  padding-block: 30px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 780px;
+  padding-block: 20px 40px;
 }
 
 .lesson-column {
   min-width: 0;
+}
+
+.lesson-strip {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.lesson-strip__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lesson-strip h1 {
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+
+.phase-chip {
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--paper-bright);
+  font-size: 0.7rem;
+  font-weight: 900;
 }
 
 .lesson-overline {
@@ -1091,17 +1120,17 @@ strong {
 
 .lesson-story {
   max-width: 540px;
-  margin-top: 14px;
+  margin-top: 6px;
   color: var(--ink-soft);
-  font-size: 0.95rem;
+  font-size: 0.86rem;
 }
 
 .activity-banner {
   display: flex;
   align-items: center;
   gap: 11px;
-  min-height: 63px;
-  margin-top: 18px;
+  min-height: 56px;
+  margin-top: 12px;
   border: 2px solid var(--ink);
   border-radius: 8px;
   padding: 10px 12px;
@@ -1180,7 +1209,7 @@ strong {
 .flight-track {
   position: relative;
   height: 34px;
-  margin-top: 31px;
+  margin-top: 16px;
 }
 
 .track-line,
@@ -1695,19 +1724,34 @@ strong {
   color: var(--coral-dark);
 }
 
+.practice-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+}
+
+.practice-footer .finish-action {
+  margin-top: 0;
+  margin-left: auto;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  padding-inline: 14px;
+}
+
 .live-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 9px;
-  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 26px;
+  margin-top: 0;
 }
 
 .live-stats > div {
   display: grid;
-  gap: 3px;
-  min-height: 68px;
-  border-top: 2px solid var(--ink);
-  padding-top: 9px;
+  gap: 2px;
+  min-height: 0;
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
 }
 
 .live-stats span {
@@ -1718,7 +1762,7 @@ strong {
 
 .live-stats strong {
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 1.35rem;
+  font-size: 1.15rem;
 }
 
 .live-stats small {
@@ -1735,22 +1779,27 @@ strong {
 }
 
 .keyboard-column {
-  align-self: start;
+  width: min(660px, 100%);
+  margin-inline: auto;
   border: 2px solid var(--ink);
   border-radius: 8px;
-  padding: 22px 18px 18px;
+  padding: 14px 18px 14px;
   background: var(--paper-bright);
   box-shadow: 5px 5px 0 rgba(16, 43, 70, 0.25);
 }
 
 .keyboard-heading {
-  align-items: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
 }
 
 .keyboard-note {
-  margin-top: 10px;
+  margin-top: 0;
   color: var(--ink-soft);
   font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .target-chip {
@@ -1802,6 +1851,10 @@ strong {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 0.79rem;
   font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
   transition: transform 100ms ease, background 100ms ease, border-color 100ms ease, color 100ms ease;
 }
 
@@ -1834,6 +1887,12 @@ strong {
 .keyboard-key.is-pressed {
   background: var(--mint);
   transform: translateY(1px);
+}
+
+.keyboard-key.is-armed {
+  border-color: var(--coral-dark);
+  background: var(--coral);
+  color: var(--paper-bright);
 }
 
 .keyboard-row--numbers .keyboard-key {
@@ -1890,6 +1949,11 @@ strong {
 
 .legend-dot--yellow {
   background: var(--sun);
+}
+
+.legend-tip {
+  margin-left: auto;
+  font-weight: 700;
 }
 
 .modal-backdrop {
@@ -2652,6 +2716,55 @@ strong {
 
   .result-score-grid > div:nth-child(2) {
     border-right: 0;
+  }
+}
+
+/* 矮视口（常见 1366×768 笔记本）进一步压缩，保证目标文字和键盘同屏。 */
+@media (max-height: 800px) {
+  .practice-layout {
+    gap: 10px;
+    padding-block: 12px 24px;
+  }
+
+  .lesson-story {
+    display: none;
+  }
+
+  .lesson-strip h1 {
+    font-size: 1.4rem;
+  }
+
+  .activity-banner {
+    min-height: 48px;
+    margin-top: 8px;
+  }
+
+  .flight-track {
+    margin-top: 10px;
+  }
+
+  .target-panel {
+    min-height: 138px;
+    padding: 14px 18px 12px;
+  }
+
+  .target-sequence {
+    min-height: 52px;
+    margin-top: 8px;
+    font-size: 1.55rem;
+  }
+
+  .feedback-line {
+    min-height: 22px;
+    margin-top: 8px;
+  }
+
+  .keyboard-column {
+    padding: 10px 16px;
+  }
+
+  .finger-legend {
+    margin-top: 10px;
   }
 }
 

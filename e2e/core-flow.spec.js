@@ -66,7 +66,7 @@ test("retry repeats the lesson without recording again", async ({ page }) => {
   await page.getByRole("button", { name: "结束本次任务" }).click();
   await page.getByRole("button", { name: "再飞一次" }).click();
 
-  await expect(page.locator(".lesson-overline")).toContainText("SESSION 1 / 2");
+  await expect(page.locator(".lesson-overline")).toContainText("第 1 / 2 次");
   const stored = await readProfile(page);
   expect(stored.completedSessions).toBe(0);
   expect(stored.history.length).toBe(1);
@@ -79,7 +79,17 @@ test("continue after a counted session starts the next formal session", async ({
   await page.getByRole("button", { name: "结束本次任务" }).click();
   await page.getByRole("button", { name: "继续下一站" }).click();
 
-  await expect(page.locator(".lesson-overline")).toContainText("SESSION 2 / 2");
+  await expect(page.locator(".lesson-overline")).toContainText("第 2 / 2 次");
+});
+
+test("tapping the on-screen keyboard types too", async ({ page }) => {
+  await startPractice(page);
+  const displayed = (await page.locator("#target-sequence .is-current").first().textContent())?.trim();
+  const key = displayed === "·" ? "space" : displayed;
+  await page.locator(`.keyboard-key[data-key="${key}"]`).first().click();
+
+  await expect(page.locator("#accuracy-value")).toHaveText("100%");
+  await expect(page.locator("#score-value")).not.toHaveText("0");
 });
 
 test("leaving early keeps a partial record", async ({ page }) => {
